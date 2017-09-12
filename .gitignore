@@ -1,0 +1,6 @@
+/target/
+**/*.rs.bk
+[root]
+name = "mal"
+version = "0.1.0"
+

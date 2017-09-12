@@ -1,0 +1,6 @@
+[package]
+name = "mal"
+version = "0.1.0"
+authors = ["Iain Ireland <iaini@ca.ibm.com>"]
+
+[dependencies]
