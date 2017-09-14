@@ -23,8 +23,14 @@ use errors::*;
 #[derive(Debug)]
 pub enum Expr<'a>{
   Symbol(&'a str),
+  Keyword(&'a str),
   Number(i32),
-  List(Vec<Expr<'a>>)
+  String(String),
+  Nil,
+  True,
+  False,
+  List(Vec<Expr<'a>>),
+  Vector(Vec<Expr<'a>>)
 }
 
 type Value = String;
@@ -39,6 +45,7 @@ fn read(input: &str) -> Result<Expr> {
 }
 
 fn eval(expr: &Expr) -> Value {
+   println!("{:?}", expr);
 	String::from(expr.to_string())
 }
 
@@ -62,7 +69,14 @@ fn run() -> Result<()> {
    prompt();
 	for line in stdin.lock().lines() {
      let line = line?;
-	  let expr = read(&line)?;
+	  let expr = match read(&line) {
+       Ok(e) => e,
+       Err(e) => {
+          println!("Error: {}", e);
+          prompt();
+			 continue;
+       }
+     };
 	  let val = eval(&expr);
 	  let output = print(&val);
 	  println!("{}", output);
