@@ -4,13 +4,13 @@ extern crate itertools;
 #[macro_use]
 extern crate nom;
 
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::io;
 use std::io::BufRead;
 use std::io::Write;
 use std::rc::Rc;
 
+mod env;
 mod reader;
 mod printer;
 mod errors {
@@ -20,6 +20,8 @@ mod errors {
       }
    }
 }
+
+use env::*;
 use errors::*;
 
 #[derive(Clone,Debug)]
@@ -47,7 +49,6 @@ impl Debug for PrimFn {
       write!(f, "<primitive function>")
    }
 }
-type Env = HashMap<String, PrimFn>;
 
 fn prompt() {
   print!("user> ");
@@ -62,7 +63,7 @@ fn eval(expr: Expr, env: &mut Env) -> Result<Expr> {
    match expr {
    Expr::Symbol(s) => {
       match env.get(&*s) {
-      Some(f) => Ok(Expr::PrimFunc(f.clone())),
+      Some(f) => Ok(f.clone()),
       None => Err("Unknown symbol".into())
       }
    },
@@ -118,12 +119,18 @@ fn main() {
 }
 
 fn run() -> Result<()> {
-	let mut env: Env = HashMap::new();
- 
-   env.insert(String::from("+"), PrimFn { func: Rc::new(Box::new(|a,b| a+b))});
-   env.insert(String::from("-"), PrimFn { func: Rc::new(Box::new(|a,b| a-b))});
-   env.insert(String::from("*"), PrimFn { func: Rc::new(Box::new(|a,b| a*b))});
-   env.insert(String::from("/"), PrimFn { func: Rc::new(Box::new(|a,b| a/b))});
+	let mut env: Env = Env::new();
+
+   {
+   	let mut add_prim_to_env = |key, value| {
+         env.insert(String::from(key),
+                    Expr::PrimFunc(PrimFn { func: Rc::new(value) }));
+      };
+      add_prim_to_env("+", Box::new(|a,b| a+b));
+      add_prim_to_env("-", Box::new(|a,b| a-b));
+      add_prim_to_env("*", Box::new(|a,b| a*b));
+      add_prim_to_env("/", Box::new(|a,b| a/b));
+   }
 
 	let stdin = io::stdin();
    prompt();
