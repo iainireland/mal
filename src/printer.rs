@@ -30,6 +30,8 @@ impl Display for Expr {
          write!(f, "{}", match s {
             SpecialForm::Def => "def!",
             SpecialForm::Do => "do",
+            SpecialForm::Fn => "fn*",
+            SpecialForm::If => "if",
             SpecialForm::LetStar => "let*"
             })
          }

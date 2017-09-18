@@ -44,6 +44,8 @@ pub enum Expr{
 pub enum SpecialForm {
   Def,
   Do,
+  Fn,
+  If,
   LetStar
 }
 
@@ -78,7 +80,7 @@ fn eval(expr: &Expr, env: &mut Env) -> Result<Expr> {
       if let Expr::Special(_) = l[0] {
          eval_special(l, env)
       } else {
-         eval_list(l, env)
+         apply(l, env)
       }
    },
    &Expr::Vector(ref v) => {
@@ -93,7 +95,7 @@ fn eval(expr: &Expr, env: &mut Env) -> Result<Expr> {
 
 
 
-fn eval_list(list: &Vec<Expr>, env: &mut Env) -> Result<Expr> {
+fn apply(list: &Vec<Expr>, env: &mut Env) -> Result<Expr> {
    let op = eval(&list[0], env)?;
    let operands = list.iter()
                       .skip(1)
@@ -131,19 +133,37 @@ fn eval_special(list: &Vec<Expr>, env: &mut Env) -> Result<Expr>{
    match s {
 	   SpecialForm::Def => {
          let (key, val): (String, Expr) = if list.len() == 3 {
-            (get_binding(&list[1])?, 
-             eval(&list[2], env)?)
+            (get_binding(&list[1])?, eval(&list[2], env)?)
          } else {
             return Err("Wrong number of arguments in definition".into());
          };
          env.set(key, val.clone());
-         return Ok(val);
+         Ok(val)
       },
       SpecialForm::Do => {
          let mut evaluated = list.iter().skip(1)
                              .map(|expr| eval(expr, env))
                              .collect::<Result<Vec<Expr>>>()?;
-         return evaluated.pop().ok_or("Empty do".into())
+         Ok(evaluated.pop().unwrap_or(Expr::Nil))
+      },
+      SpecialForm::Fn => {
+         unimplemented!();
+      },
+      SpecialForm::If => {
+         if list.len() != 3 && list.len() != 4 {
+            return Err("Wrong number of arguments for if".into());
+         }
+         let test = eval(&list[1], env)?;
+         match test {
+            Expr::Nil | Expr::False =>
+               if list.len() == 4 {
+                  eval(&list[3], env)
+               } else {
+                 Ok(Expr::Nil)
+               },
+            _ =>
+               eval(&list[2], env)
+         }
       },
       SpecialForm::LetStar => {
          let (bindings, body): (&Vec<Expr>, &Expr) = if list.len() == 3 {
@@ -166,9 +186,9 @@ fn eval_special(list: &Vec<Expr>, env: &mut Env) -> Result<Expr>{
               new_env.set(get_binding(key)?, val.clone());
             }
          }
-         return eval(body, &mut new_env);
+         eval(body, &mut new_env)
       },
-   };
+   }
 }
 
 fn print(val: &Expr) -> String {
