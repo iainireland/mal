@@ -18,6 +18,12 @@ impl<'a> Env<'a> {
          outer: None
       }
    }
+   pub fn extend(env: &'a Env) -> Self {
+      Env {
+         defs: HashMap::new(),
+         outer: Some(env)
+      }
+   }
 
    pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&Expr> 
       where Key: Borrow<Q>,
@@ -29,4 +35,5 @@ impl<'a> Env<'a> {
    pub fn set(&mut self, k: Key, v: Expr) -> Option<Expr> {
 	   self.defs.insert(k,v)
    }
+
 }

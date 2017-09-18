@@ -65,38 +65,38 @@ fn read(input: &str) -> Result<Expr> {
    reader::read_str(input)
 }
 
-fn eval(expr: Expr, env: &mut Env) -> Result<Expr> {
+fn eval(expr: &Expr, env: &mut Env) -> Result<Expr> {
    match expr {
-   Expr::Symbol(s) => {
-      match env.get(&*s) {
+   &Expr::Symbol(ref s) => {
+      match env.get(s.deref()) {
       Some(f) => Ok(f.clone()),
       None => Err("Unknown symbol".into())
       }
    },
-   Expr::List(ref l) if l.len() > 0 => {
+   &Expr::List(ref l) if l.len() > 0 => {
       if let Expr::Special(_) = l[0] {
          eval_special(l, env)
       } else {
          eval_list(l, env)
       }
    },
-   Expr::Vector(v) => {
+   &Expr::Vector(ref v) => {
       let evaluated = v.iter()
-                       .map(|expr| eval(expr.clone(), env))
+                       .map(|expr| eval(expr, env))
                        .collect::<Result<Vec<Expr>>>()?;
       Ok(Expr::Vector(evaluated))
    }
-   _ => Ok(expr)
+   _ => Ok(expr.clone())
    }
 }
 
 
 
 fn eval_list(list: &Vec<Expr>, env: &mut Env) -> Result<Expr> {
-   let op = eval(list[0].clone(), env)?;
+   let op = eval(&list[0], env)?;
    let operands = list.iter()
                       .skip(1)
-                      .map(|expr| eval(expr.clone(), env))
+                      .map(|expr| eval(expr, env))
                       .collect::<Result<Vec<Expr>>>()?;
    match op {
       Expr::PrimFunc(pf) => {
@@ -115,6 +115,13 @@ fn eval_list(list: &Vec<Expr>, env: &mut Env) -> Result<Expr> {
    }
 }
 
+fn get_binding(expr: &Expr) -> Result<String> {
+   match *expr {
+      Expr::Symbol(ref s) => Ok(s.deref().clone()),
+      _ => Err("Cannot bind to non-symbol".into())
+   }
+}
+
 fn eval_special(list: &Vec<Expr>, env: &mut Env) -> Result<Expr>{
    let s = match list[0] {
      Expr::Special(s) => s,
@@ -123,12 +130,8 @@ fn eval_special(list: &Vec<Expr>, env: &mut Env) -> Result<Expr>{
    match s {
 	   SpecialForm::Def => {
          let (key, val): (String, Expr) = if list.len() == 3 {
-            let k = match list[1] {
-               Expr::Symbol(ref s) => s.deref().clone(),
-               _ => return Err("First argument to def! must be a symbol".into())
-            };
-            let v = eval(list[2].clone(), env)?;
-            (k, v)
+            (get_binding(&list[1])?, 
+             eval(&list[2], env)?)
          } else {
             return Err("Wrong number of arguments in definition".into());
          };
@@ -136,7 +139,27 @@ fn eval_special(list: &Vec<Expr>, env: &mut Env) -> Result<Expr>{
          return Ok(val);
       },
       SpecialForm::LetStar => {
-         unimplemented!("let");
+         let (bindings, body): (&Vec<Expr>, &Expr) = if list.len() == 3 {
+            (match list[1] {
+               Expr::List(ref l) => l,
+               Expr::Vector(ref v) => v,
+               _ => return Err("First argument to let* must be list of bindings".into())
+            }, &list[2])
+         } else {
+            return Err("Wrong number of arguments for let*".into());
+         };
+         if bindings.len() % 2 != 0 {
+            return Err("Invalid bindings in let*".into());
+         }
+			let mut new_env = Env::extend(env);
+			if bindings.len() > 0 {
+            for binding in bindings.chunks(2) {
+              let (key, expr) = (&binding[0], &binding[1]);
+              let val = eval(expr, &mut new_env)?;
+              new_env.set(get_binding(key)?, val.clone());
+            }
+         }
+         return eval(body, &mut new_env);
       },
    };
 }
@@ -182,7 +205,7 @@ fn run() -> Result<()> {
           continue;
        }
      };
-     let val = match eval(expr, &mut env) {
+     let val = match eval(&expr, &mut env) {
         Ok(v) => v,
         Err(e) => {
           println!("Error: {}", e);
