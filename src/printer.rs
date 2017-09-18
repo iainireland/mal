@@ -3,6 +3,7 @@ use std::fmt::*;
 use itertools::Itertools;
 
 use Expr;
+use SpecialForm;
 
 impl Display for Expr {
    fn fmt(&self, f: &mut Formatter) -> Result {
@@ -15,15 +16,21 @@ impl Display for Expr {
 		Expr::True => write!(f, "true"),
 		Expr::False => write!(f, "false"),
       Expr::PrimFunc(_) => write!(f, "<primitive function>"),
-      Expr::List(ref l)   => {
+      Expr::List(ref l) => {
 		   write!(f, "(")?;
          write!(f, "{}", l.iter().join(" "))?;
 			write!(f, ")")
-         }
-      Expr::Vector(ref l)   => {
+         },
+      Expr::Vector(ref l) => {
 		   write!(f, "[")?;
          write!(f, "{}", l.iter().join(" "))?;
 			write!(f, "]")
+         },
+      Expr::Special(s) => {
+         write!(f, "{}", match s {
+            SpecialForm::Def => "def!",
+            SpecialForm::LetStar => "let*"
+            })
          }
       }
    }

@@ -5,6 +5,7 @@ use errors::*;
 use nom::*;
 
 use Expr;
+use SpecialForm;
 
 pub fn read_str(input: &str) -> Result<Expr> {
 	 match get_expr(input.as_bytes()) {
@@ -92,7 +93,9 @@ named!(get_special<Expr>,
    alt!(
       map!(tag!("nil"), |_| Expr::Nil) | 
       map!(tag!("true"), |_| Expr::True) |
-      map!(tag!("false"), |_| Expr::False)
+      map!(tag!("false"), |_| Expr::False) |
+      map!(tag!("def!"), |_| Expr::Special(SpecialForm::Def)) |
+      map!(tag!("let*"), |_| Expr::Special(SpecialForm::LetStar)) 
    )
 );
 

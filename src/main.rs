@@ -4,10 +4,11 @@ extern crate itertools;
 #[macro_use]
 extern crate nom;
 
-use std::fmt::Debug;
+use std::fmt::{Debug, Formatter};
 use std::io;
 use std::io::BufRead;
 use std::io::Write;
+use std::ops::Deref;
 use std::rc::Rc;
 
 mod env;
@@ -26,24 +27,29 @@ use errors::*;
 
 #[derive(Clone,Debug)]
 pub enum Expr{
+  Nil,
+  True,
+  False,
   Symbol(Rc<String>),
   Keyword(Rc<String>),
   Number(i32),
   String(String),
-  Nil,
-  True,
-  False,
   List(Vec<Expr>),
   Vector(Vec<Expr>),
-  PrimFunc(PrimFn)
+  PrimFunc(PrimFn),
+  Special(SpecialForm)
+}
+
+#[derive(Clone,Copy,Debug)]
+pub enum SpecialForm {
+  Def,
+  LetStar
 }
 
 #[derive(Clone)]
 pub struct PrimFn {
    func: Rc<Box<Fn(i32, i32) -> i32>>
 }
-use std::fmt::Formatter;
-
 impl Debug for PrimFn {
    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
       write!(f, "<primitive function>")
@@ -56,7 +62,7 @@ fn prompt() {
 }
 
 fn read(input: &str) -> Result<Expr> {
- 	reader::read_str(input)
+   reader::read_str(input)
 }
 
 fn eval(expr: Expr, env: &mut Env) -> Result<Expr> {
@@ -68,12 +74,11 @@ fn eval(expr: Expr, env: &mut Env) -> Result<Expr> {
       }
    },
    Expr::List(ref l) if l.len() > 0 => {
-	   let op = eval(l[0].clone(), env)?;
-	   let operands = l.iter()
-                      .skip(1)
-                      .map(|expr| eval(expr.clone(), env))
-                      .collect::<Result<Vec<Expr>>>()?;
-      apply(op, operands, env)
+      if let Expr::Special(_) = l[0] {
+         eval_special(l, env)
+      } else {
+         eval_list(l, env)
+      }
    },
    Expr::Vector(v) => {
       let evaluated = v.iter()
@@ -85,11 +90,18 @@ fn eval(expr: Expr, env: &mut Env) -> Result<Expr> {
    }
 }
 
-fn apply(op: Expr, operands: Vec<Expr>, env: &mut Env) -> Result<Expr>{
+
+
+fn eval_list(list: &Vec<Expr>, env: &mut Env) -> Result<Expr> {
+   let op = eval(list[0].clone(), env)?;
+   let operands = list.iter()
+                      .skip(1)
+                      .map(|expr| eval(expr.clone(), env))
+                      .collect::<Result<Vec<Expr>>>()?;
    match op {
       Expr::PrimFunc(pf) => {
          if operands.len() < 2 {
-    		   return Err("Not enough operands".into());
+            return Err("Not enough operands".into());
          }
          let nums = operands.iter().map(|x| match *x {
                Expr::Number(n) => Ok(n),
@@ -103,27 +115,53 @@ fn apply(op: Expr, operands: Vec<Expr>, env: &mut Env) -> Result<Expr>{
    }
 }
 
+fn eval_special(list: &Vec<Expr>, env: &mut Env) -> Result<Expr>{
+   let s = match list[0] {
+     Expr::Special(s) => s,
+     _ => unreachable!()
+   };
+   match s {
+	   SpecialForm::Def => {
+         let (key, val): (String, Expr) = if list.len() == 3 {
+            let k = match list[1] {
+               Expr::Symbol(ref s) => s.deref().clone(),
+               _ => return Err("First argument to def! must be a symbol".into())
+            };
+            let v = eval(list[2].clone(), env)?;
+            (k, v)
+         } else {
+            return Err("Wrong number of arguments in definition".into());
+         };
+         env.set(key, val.clone());
+         return Ok(val);
+      },
+      SpecialForm::LetStar => {
+         unimplemented!("let");
+      },
+   };
+}
+
 fn print(val: &Expr) -> String {
-	String::from(val.to_string())
+   String::from(val.to_string())
 }
 
 fn main() {
-	if let Err(ref e) = run() {
-		println!("Error: {}", e);
+   if let Err(ref e) = run() {
+      println!("Error: {}", e);
      
-	   for e in e.iter().skip(1) {
-     	   println!("caused by: {}", e);
+      for e in e.iter().skip(1) {
+         println!("caused by: {}", e);
       }
       ::std::process::exit(1);
-	}
+   }
 }
 
 fn run() -> Result<()> {
-	let mut env: Env = Env::new();
+   let mut env: Env = Env::new();
 
    {
-   	let mut add_prim_to_env = |key, value| {
-         env.insert(String::from(key),
+      let mut add_prim_to_env = |key, value| {
+         env.set(String::from(key),
                     Expr::PrimFunc(PrimFn { func: Rc::new(value) }));
       };
       add_prim_to_env("+", Box::new(|a,b| a+b));
@@ -132,30 +170,30 @@ fn run() -> Result<()> {
       add_prim_to_env("/", Box::new(|a,b| a/b));
    }
 
-	let stdin = io::stdin();
+   let stdin = io::stdin();
    prompt();
-	for line in stdin.lock().lines() {
+   for line in stdin.lock().lines() {
      let line = line?;
-	  let expr = match read(&line) {
+     let expr = match read(&line) {
        Ok(e) => e,
        Err(e) => {
           println!("Error: {}", e);
           prompt();
-			 continue;
+          continue;
        }
      };
-	  let val = match eval(expr, &mut env) {
+     let val = match eval(expr, &mut env) {
         Ok(v) => v,
         Err(e) => {
           println!("Error: {}", e);
           prompt();
-			 continue;
+          continue;
        }
      };
-	  let output = print(&val);
-	  println!("{}", output);
+     let output = print(&val);
+     println!("{}", output);
      prompt();
-   }	
+   }  
   println!();
   Ok(())
 }
