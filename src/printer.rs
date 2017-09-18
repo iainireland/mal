@@ -14,6 +14,7 @@ impl<'a> Display for Expr<'a> {
 		Expr::Nil => write!(f, "nil"),
 		Expr::True => write!(f, "true"),
 		Expr::False => write!(f, "false"),
+      Expr::PrimFunc(_) => write!(f, "<primitive function>"),
       Expr::List(ref l)   => {
 		   write!(f, "(")?;
          write!(f, "{}", l.iter().join(" "))?;
