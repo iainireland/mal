@@ -20,20 +20,19 @@ mod errors {
       }
    }
 }
-
 use errors::*;
 
 #[derive(Clone,Debug)]
-pub enum Expr<'a>{
-  Symbol(&'a str),
-  Keyword(&'a str),
+pub enum Expr{
+  Symbol(Rc<String>),
+  Keyword(Rc<String>),
   Number(i32),
   String(String),
   Nil,
   True,
   False,
-  List(Vec<Expr<'a>>),
-  Vector(Vec<Expr<'a>>),
+  List(Vec<Expr>),
+  Vector(Vec<Expr>),
   PrimFunc(PrimFn)
 }
 
@@ -59,10 +58,10 @@ fn read(input: &str) -> Result<Expr> {
  	reader::read_str(input)
 }
 
-fn eval<'a>(expr: Expr<'a>, env: &mut Env) -> Result<Expr<'a>> {
+fn eval(expr: Expr, env: &mut Env) -> Result<Expr> {
    match expr {
    Expr::Symbol(s) => {
-      match env.get(s) {
+      match env.get(&*s) {
       Some(f) => Ok(Expr::PrimFunc(f.clone())),
       None => Err("Unknown symbol".into())
       }
@@ -85,7 +84,7 @@ fn eval<'a>(expr: Expr<'a>, env: &mut Env) -> Result<Expr<'a>> {
    }
 }
 
-fn apply<'a>(op: Expr<'a>, operands: Vec<Expr<'a>>, env: &mut Env) -> Result<Expr<'a>>{
+fn apply(op: Expr, operands: Vec<Expr>, env: &mut Env) -> Result<Expr>{
    match op {
       Expr::PrimFunc(pf) => {
          if operands.len() < 2 {

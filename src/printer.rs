@@ -4,7 +4,7 @@ use itertools::Itertools;
 
 use Expr;
 
-impl<'a> Display for Expr<'a> {
+impl Display for Expr {
    fn fmt(&self, f: &mut Formatter) -> Result {
       match *self {
       Expr::Symbol(ref s) => write!(f, "{}", s),

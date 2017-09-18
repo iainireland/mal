@@ -1,4 +1,5 @@
 use std;
+use std::rc::Rc;
 
 use errors::*;
 use nom::*;
@@ -54,7 +55,7 @@ named!(get_symbol<Expr>,
          is_not_s!(" \t[]{}()'\"`,;"),
          std::str::from_utf8
       ),
-      |s| Expr::Symbol(s)
+      |s| Expr::Symbol(Rc::new(String::from(s)))
    )
 );
 
@@ -66,7 +67,7 @@ named!(get_keyword<Expr>,
             is_not_s!(" \t[]{}()'\"`,;"),
             std::str::from_utf8
          ),
-         |s| Expr::Keyword(s)
+         |s| Expr::Keyword(Rc::new(String::from(s)))
       )
    )
 );
