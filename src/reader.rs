@@ -95,6 +95,7 @@ named!(get_special<Expr>,
       map!(tag!("true"), |_| Expr::True) |
       map!(tag!("false"), |_| Expr::False) |
       map!(tag!("def!"), |_| Expr::Special(SpecialForm::Def)) |
+      map!(tag!("do"), |_| Expr::Special(SpecialForm::Do)) |
       map!(tag!("let*"), |_| Expr::Special(SpecialForm::LetStar)) 
    )
 );

@@ -29,6 +29,7 @@ impl Display for Expr {
       Expr::Special(s) => {
          write!(f, "{}", match s {
             SpecialForm::Def => "def!",
+            SpecialForm::Do => "do",
             SpecialForm::LetStar => "let*"
             })
          }

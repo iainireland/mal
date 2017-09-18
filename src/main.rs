@@ -43,6 +43,7 @@ pub enum Expr{
 #[derive(Clone,Copy,Debug)]
 pub enum SpecialForm {
   Def,
+  Do,
   LetStar
 }
 
@@ -137,6 +138,12 @@ fn eval_special(list: &Vec<Expr>, env: &mut Env) -> Result<Expr>{
          };
          env.set(key, val.clone());
          return Ok(val);
+      },
+      SpecialForm::Do => {
+         let mut evaluated = list.iter().skip(1)
+                             .map(|expr| eval(expr, env))
+                             .collect::<Result<Vec<Expr>>>()?;
+         return evaluated.pop().ok_or("Empty do".into())
       },
       SpecialForm::LetStar => {
          let (bindings, body): (&Vec<Expr>, &Expr) = if list.len() == 3 {
