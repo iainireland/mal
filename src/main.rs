@@ -36,6 +36,7 @@ pub enum Expr{
   String(String),
   List(Vec<Expr>),
   Vector(Vec<Expr>),
+  Func(Rc<Closure>),
   PrimFunc(PrimFn),
   Special(SpecialForm)
 }
@@ -50,6 +51,38 @@ pub enum SpecialForm {
 }
 
 #[derive(Clone)]
+pub struct Closure {
+   params: Vec<Rc<String>>,
+   body: Expr,
+   env: EnvRef,
+}
+
+impl Closure {
+   fn new(params: &Expr, body: &Expr, env: &EnvRef) -> Result<Self> {
+      let bind_list: &Vec<Expr> = match params {
+         &Expr::List(ref l) | &Expr::Vector(ref l) => l,
+         _ => return Err("Function parameters must be list or vector".into())   
+      };
+      let bind_strs = bind_list.iter()
+         .map(|expr| match expr {
+            &Expr::Symbol(ref s) => Ok(s.clone()),
+            _ => return Err("Invalid function parameters".into())
+         }).collect::<Result<Vec<Rc<String>>>>()?;
+      Ok(Closure {
+         params: bind_strs,
+         body: body.clone(),
+         env: env.clone()
+      })
+   }
+}
+
+impl Debug for Closure {
+   fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+      write!(f, "<function: params={:?} body={:?}>", self.params, self.body)
+   }
+}
+
+#[derive(Clone)]
 pub struct PrimFn {
    func: Rc<Box<Fn(i32, i32) -> i32>>
 }
@@ -60,8 +93,8 @@ impl Debug for PrimFn {
 }
 
 fn prompt() {
-  print!("user> ");
-  io::stdout().flush().unwrap();
+   print!("user> ");
+   io::stdout().flush().unwrap();
 }
 
 fn read(input: &str) -> Result<Expr> {
@@ -114,13 +147,19 @@ fn apply(list: &Vec<Expr>, env: &EnvRef) -> Result<Expr> {
          let result = nums.iter().skip(1).fold(first, |a,&b| (pf.func)(a,b));
          Ok(Expr::Number(result))
       },
+      Expr::Func(ref closure) => {
+         let bindings: Vec<_> = closure.params.iter().cloned()
+                                   .zip(operands.iter().cloned()).collect();
+		   let new_env = Env::extend(&closure.env, bindings);
+         eval(&closure.body, &new_env)
+      }
       _ => Err("Non-function cannot be applied".into())
    }
 }
 
-fn get_binding(expr: &Expr) -> Result<String> {
+fn get_binding(expr: &Expr) -> Result<Rc<String>> {
    match *expr {
-      Expr::Symbol(ref s) => Ok(s.deref().clone()),
+      Expr::Symbol(ref s) => Ok(s.clone()),
       _ => Err("Cannot bind to non-symbol".into())
    }
 }
@@ -132,7 +171,7 @@ fn eval_special(list: &Vec<Expr>, env: &EnvRef) -> Result<Expr>{
    };
    match s {
 	   SpecialForm::Def => {
-         let (key, val): (String, Expr) = if list.len() == 3 {
+         let (key, val) = if list.len() == 3 {
             (get_binding(&list[1])?, eval(&list[2], env)?)
          } else {
             return Err("Wrong number of arguments in definition".into());
@@ -147,7 +186,10 @@ fn eval_special(list: &Vec<Expr>, env: &EnvRef) -> Result<Expr>{
          Ok(evaluated.pop().unwrap_or(Expr::Nil))
       },
       SpecialForm::Fn => {
-         unimplemented!();
+         if list.len() != 3 {
+            return Err("Wrong number of arguments for fn*".into());
+         }
+         Ok(Expr::Func(Rc::new(Closure::new(&list[1], &list[2], env)?)))
       },
       SpecialForm::If => {
          if list.len() != 3 && list.len() != 4 {
@@ -178,7 +220,7 @@ fn eval_special(list: &Vec<Expr>, env: &EnvRef) -> Result<Expr>{
          if bindings.len() % 2 != 0 {
             return Err("Invalid bindings in let*".into());
          }
-			let new_env = Env::extend(env);
+			let new_env = Env::extend(env, vec![]);
 			if bindings.len() > 0 {
             for binding in bindings.chunks(2) {
               let (key, expr) = (&binding[0], &binding[1]);
@@ -211,7 +253,7 @@ fn run() -> Result<()> {
 
    {
       let add_prim_to_env = |key, value| {
-         env.borrow_mut().set(String::from(key),
+         env.borrow_mut().set(Rc::new(String::from(key)),
                     Expr::PrimFunc(PrimFn { func: Rc::new(value) }));
       };
       add_prim_to_env("+", Box::new(|a,b| a+b));
@@ -240,6 +282,7 @@ fn run() -> Result<()> {
           continue;
        }
      };
+     println!("{:?}", val);
      let output = print(&val);
      println!("{}", output);
      prompt();

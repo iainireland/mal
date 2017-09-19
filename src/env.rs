@@ -1,5 +1,6 @@
 use std::borrow::Borrow;
 use std::cell::RefCell;
+use std::iter::FromIterator;
 use std::ops::Deref;
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -7,7 +8,7 @@ use std::rc::Rc;
 
 use Expr;
 
-type Key = String;
+type Key = Rc<String>;
 
 pub struct Env {
    defs: HashMap<Key, Expr>,
@@ -23,9 +24,9 @@ impl Env {
       };
       Rc::new(RefCell::new(e))
    }
-   pub fn extend(env: &EnvRef) -> EnvRef {
+   pub fn extend(env: &EnvRef, bindings: Vec<(Rc<String>, Expr)>) -> EnvRef {
       let e = Env {
-         defs: HashMap::new(),
+         defs: HashMap::from_iter(bindings),
          outer: Some(env.clone())
       };
       Rc::new(RefCell::new(e))
