@@ -68,10 +68,10 @@ fn read(input: &str) -> Result<Expr> {
    reader::read_str(input)
 }
 
-fn eval(expr: &Expr, env: &mut Env) -> Result<Expr> {
+fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
    match expr {
    &Expr::Symbol(ref s) => {
-      match env.get(s.deref()) {
+      match env.borrow().get(s.deref()) {
       Some(f) => Ok(f.clone()),
       None => Err("Unknown symbol".into())
       }
@@ -95,7 +95,7 @@ fn eval(expr: &Expr, env: &mut Env) -> Result<Expr> {
 
 
 
-fn apply(list: &Vec<Expr>, env: &mut Env) -> Result<Expr> {
+fn apply(list: &Vec<Expr>, env: &EnvRef) -> Result<Expr> {
    let op = eval(&list[0], env)?;
    let operands = list.iter()
                       .skip(1)
@@ -125,7 +125,7 @@ fn get_binding(expr: &Expr) -> Result<String> {
    }
 }
 
-fn eval_special(list: &Vec<Expr>, env: &mut Env) -> Result<Expr>{
+fn eval_special(list: &Vec<Expr>, env: &EnvRef) -> Result<Expr>{
    let s = match list[0] {
      Expr::Special(s) => s,
      _ => unreachable!()
@@ -137,7 +137,7 @@ fn eval_special(list: &Vec<Expr>, env: &mut Env) -> Result<Expr>{
          } else {
             return Err("Wrong number of arguments in definition".into());
          };
-         env.set(key, val.clone());
+         env.borrow_mut().set(key, val.clone());
          Ok(val)
       },
       SpecialForm::Do => {
@@ -178,15 +178,15 @@ fn eval_special(list: &Vec<Expr>, env: &mut Env) -> Result<Expr>{
          if bindings.len() % 2 != 0 {
             return Err("Invalid bindings in let*".into());
          }
-			let mut new_env = Env::extend(env);
+			let new_env = Env::extend(env);
 			if bindings.len() > 0 {
             for binding in bindings.chunks(2) {
               let (key, expr) = (&binding[0], &binding[1]);
-              let val = eval(expr, &mut new_env)?;
-              new_env.set(get_binding(key)?, val.clone());
+              let val = eval(expr, &new_env)?;
+              new_env.borrow_mut().set(get_binding(key)?, val.clone());
             }
          }
-         eval(body, &mut new_env)
+         eval(body, &new_env)
       },
    }
 }
@@ -207,11 +207,11 @@ fn main() {
 }
 
 fn run() -> Result<()> {
-   let mut env: Env = Env::new();
+   let env: EnvRef = Env::new();
 
    {
-      let mut add_prim_to_env = |key, value| {
-         env.set(String::from(key),
+      let add_prim_to_env = |key, value| {
+         env.borrow_mut().set(String::from(key),
                     Expr::PrimFunc(PrimFn { func: Rc::new(value) }));
       };
       add_prim_to_env("+", Box::new(|a,b| a+b));
@@ -232,7 +232,7 @@ fn run() -> Result<()> {
           continue;
        }
      };
-     let val = match eval(&expr, &mut env) {
+     let val = match eval(&expr, &env) {
         Ok(v) => v,
         Err(e) => {
           println!("Error: {}", e);
