@@ -29,7 +29,7 @@ use core::*;
 use env::*;
 use errors::*;
 
-#[derive(Clone,Debug)]
+#[derive(Clone,Debug,PartialEq)]
 pub enum Expr{
   Nil,
   True,
@@ -45,7 +45,7 @@ pub enum Expr{
   Special(SpecialForm)
 }
 
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone,Copy,Debug,PartialEq)]
 pub enum SpecialForm {
   Def,
   Do,
@@ -70,7 +70,7 @@ impl Closure {
       let bind_strs = bind_list.iter()
          .map(|expr| match expr {
             &Expr::Symbol(ref s) => Ok(s.clone()),
-            _ => return Err("Invalid function parameters".into())
+            _ => return Err("Invalid function parameter".into())
          }).collect::<Result<Vec<Rc<String>>>>()?;
       Ok(Closure {
          params: bind_strs,
@@ -79,13 +79,16 @@ impl Closure {
       })
    }
 }
-
 impl Debug for Closure {
    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
       write!(f, "<function: params={:?} body={:?}>", self.params, self.body)
    }
 }
-
+impl PartialEq for Closure {
+   fn eq(&self, _: &Closure) -> bool {
+      false
+   }
+}
 
 fn prompt() {
    print!("user> ");
