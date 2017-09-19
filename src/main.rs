@@ -2,6 +2,8 @@
 extern crate error_chain;
 extern crate itertools;
 #[macro_use]
+extern crate lazy_static;
+#[macro_use]
 extern crate nom;
 
 use std::fmt::{Debug, Formatter};
@@ -11,6 +13,7 @@ use std::io::Write;
 use std::ops::Deref;
 use std::rc::Rc;
 
+mod core;
 mod env;
 mod reader;
 mod printer;
@@ -22,6 +25,7 @@ mod errors {
    }
 }
 
+use core::*;
 use env::*;
 use errors::*;
 
@@ -82,15 +86,6 @@ impl Debug for Closure {
    }
 }
 
-#[derive(Clone)]
-pub struct PrimFn {
-   func: Rc<Box<Fn(i32, i32) -> i32>>
-}
-impl Debug for PrimFn {
-   fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-      write!(f, "<primitive function>")
-   }
-}
 
 fn prompt() {
    print!("user> ");
@@ -136,16 +131,7 @@ fn apply(list: &Vec<Expr>, env: &EnvRef) -> Result<Expr> {
                       .collect::<Result<Vec<Expr>>>()?;
    match op {
       Expr::PrimFunc(pf) => {
-         if operands.len() < 2 {
-            return Err("Not enough operands".into());
-         }
-         let nums = operands.iter().map(|x| match *x {
-               Expr::Number(n) => Ok(n),
-               _ => Err("Non-number in arithmetic".into())
-            }).collect::<Result<Vec<i32>>>()?;
-         let first = nums[0];
-         let result = nums.iter().skip(1).fold(first, |a,&b| (pf.func)(a,b));
-         Ok(Expr::Number(result))
+         (pf.func)(&operands)
       },
       Expr::Func(ref closure) => {
          let bindings: Vec<_> = closure.params.iter().cloned()
@@ -250,16 +236,9 @@ fn main() {
 
 fn run() -> Result<()> {
    let env: EnvRef = Env::new();
-
-   {
-      let add_prim_to_env = |key, value| {
-         env.borrow_mut().set(Rc::new(String::from(key)),
-                    Expr::PrimFunc(PrimFn { func: Rc::new(value) }));
-      };
-      add_prim_to_env("+", Box::new(|a,b| a+b));
-      add_prim_to_env("-", Box::new(|a,b| a-b));
-      add_prim_to_env("*", Box::new(|a,b| a*b));
-      add_prim_to_env("/", Box::new(|a,b| a/b));
+   for (key, val) in GLOBAL_NAMESPACE.iter() {
+     env.borrow_mut().set(Rc::new(String::from(*key)),
+                          Expr::PrimFunc(val.clone()));
    }
 
    let stdin = io::stdin();
@@ -282,7 +261,6 @@ fn run() -> Result<()> {
           continue;
        }
      };
-     println!("{:?}", val);
      let output = print(&val);
      println!("{}", output);
      prompt();
