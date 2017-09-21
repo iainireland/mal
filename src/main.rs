@@ -59,6 +59,7 @@ pub struct Closure {
     params: Vec<Rc<String>>,
     body: Expr,
     env: EnvRef,
+    is_variadic: bool
 }
 
 impl Closure {
@@ -67,21 +68,33 @@ impl Closure {
             &Expr::List(ref l) | &Expr::Vector(ref l) => l,
             _ => return Err("Function parameters must be list or vector".into())
         };
-        let bind_strs = bind_list.iter()
-            .map(|expr| match expr {
-                &Expr::Symbol(ref s) => Ok(s.clone()),
-                _ => return Err("Invalid function parameter".into())
-            }).collect::<Result<Vec<Rc<String>>>>()?;
+        let mut is_variadic = false;
+        let bind_strs = bind_list.iter().enumerate()
+            .filter_map(|(idx, expr)| match expr {
+                &Expr::Symbol(ref s) => {
+                    if **s != "&" {
+                        Some(Ok(s.clone()))
+                    } else if idx == bind_list.len() - 2 {
+                        is_variadic = true;
+                        None
+                    } else {
+                        Some(Err("Invalid variadic binding".into()))
+                    }
+                },
+                _ => Some(Err("Invalid function parameter".into()))
+            })
+            .collect::<Result<Vec<Rc<String>>>>()?;
         Ok(Closure {
             params: bind_strs,
             body: body.clone(),
-            env: env.clone()
+            env: env.clone(),
+            is_variadic: is_variadic,
         })
     }
 }
 impl Debug for Closure {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "<function: params={:?} body={:?}>", self.params, self.body)
+        write!(f, "<function: params={:?} body={:?}> variadic={:?}", self.params, self.body, self.is_variadic)
     }
 }
 impl PartialEq for Closure {
@@ -128,7 +141,7 @@ fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
 
 fn apply(list: &[Expr], env: &EnvRef) -> Result<Expr> {
     let op = eval(&list[0], env)?;
-    let operands = list.iter()
+    let mut operands = list.iter()
         .skip(1)
         .map(|expr| eval(expr, env))
         .collect::<Result<Vec<Expr>>>()?;
@@ -137,7 +150,15 @@ fn apply(list: &[Expr], env: &EnvRef) -> Result<Expr> {
             (pf.func)(&operands)
         },
         Expr::Func(ref closure) => {
-
+            if closure.is_variadic {
+                if operands.len() < closure.params.len() - 1 {
+                    return Err("Too few arguments for variadic function".into());
+                }
+                let rest = operands.split_off(closure.params.len() - 1);
+                operands.push(Expr::List(rest));
+            } else if operands.len() != closure.params.len() {
+                return Err("Wrong number of arguments".into());
+            }
             let bindings: Vec<_> = closure.params.iter().cloned()
                 .zip(operands.iter().cloned()).collect();
 		    let new_env = Env::extend(&closure.env, bindings);
