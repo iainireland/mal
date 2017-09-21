@@ -28,7 +28,7 @@ lazy_static! {
 }
 
 pub struct PrimFn {
-    pub func: fn(&Vec<Expr>) -> Result<Expr>
+    pub func: fn(&[Expr]) -> Result<Expr>
 }
 impl Clone for PrimFn {
     fn clone(&self) -> Self {
@@ -61,7 +61,7 @@ fn expr_num(expr: &Expr) -> Result<i32> {
 
 macro_rules! prim_arith {
     ($name:ident, $op:expr) =>
-        (fn $name(operands: &Vec<Expr>) -> Result<Expr> {
+        (fn $name(operands: &[Expr]) -> Result<Expr> {
             if operands.len() < 2 {
                 return Err("Not enough operands".into());
             }
@@ -80,7 +80,7 @@ prim_arith!(prim_div, |a,b| a/b);
 
 macro_rules! prim_compare {
     ($name:ident, $op:expr) =>
-        (fn $name(operands: &Vec<Expr>) -> Result<Expr> {
+        (fn $name(operands: &[Expr]) -> Result<Expr> {
             if operands.len() != 2 {
                 return Err("Wrong number of operands for comparison".into());
             }
@@ -94,16 +94,16 @@ prim_compare!(prim_gt, |a,b| a>b);
 prim_compare!(prim_le, |a,b| a<=b);
 prim_compare!(prim_ge, |a,b| a>=b);
 
-fn prim_prn(operands: &Vec<Expr>) -> Result<Expr> {
+fn prim_prn(operands: &[Expr]) -> Result<Expr> {
     println!("{}", operands.iter().join(" "));
     Ok(Expr::Nil)
 }
 
-fn prim_list(operands: &Vec<Expr>) -> Result<Expr> {
-    Ok(Expr::List(operands.clone()))
+fn prim_list(operands: &[Expr]) -> Result<Expr> {
+    Ok(Expr::List(operands.to_vec()))
 }
 
-fn prim_listp(operands: &Vec<Expr>) -> Result<Expr> {
+fn prim_listp(operands: &[Expr]) -> Result<Expr> {
     if operands.len() != 1 {
         return Err("Wrong arity for list?".into());
     }
@@ -113,7 +113,7 @@ fn prim_listp(operands: &Vec<Expr>) -> Result<Expr> {
     }
 }
 
-fn prim_emptyp(operands: &Vec<Expr>) -> Result<Expr> {
+fn prim_emptyp(operands: &[Expr]) -> Result<Expr> {
     if operands.len() != 1 {
         return Err("Wrong arity for empty?".into());
     }
@@ -124,7 +124,7 @@ fn prim_emptyp(operands: &Vec<Expr>) -> Result<Expr> {
     }
 }
 
-fn prim_count(operands: &Vec<Expr>) -> Result<Expr> {
+fn prim_count(operands: &[Expr]) -> Result<Expr> {
     if operands.len() != 1 {
         return Err("Wrong arity for count".into());
     }
@@ -136,7 +136,7 @@ fn prim_count(operands: &Vec<Expr>) -> Result<Expr> {
     }
 }
 
-fn prim_eq(operands: &Vec<Expr>) -> Result<Expr> {
+fn prim_eq(operands: &[Expr]) -> Result<Expr> {
     if operands.len() != 2 {
         Err("Wrong arity for count".into())
     } else {

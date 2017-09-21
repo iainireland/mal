@@ -63,7 +63,7 @@ pub struct Closure {
 
 impl Closure {
     fn new(params: &Expr, body: &Expr, env: &EnvRef) -> Result<Self> {
-        let bind_list: &Vec<Expr> = match params {
+        let bind_list: &[Expr] = match params {
             &Expr::List(ref l) | &Expr::Vector(ref l) => l,
             _ => return Err("Function parameters must be list or vector".into())
         };
@@ -126,7 +126,7 @@ fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
 
 
 
-fn apply(list: &Vec<Expr>, env: &EnvRef) -> Result<Expr> {
+fn apply(list: &[Expr], env: &EnvRef) -> Result<Expr> {
     let op = eval(&list[0], env)?;
     let operands = list.iter()
         .skip(1)
@@ -154,7 +154,7 @@ fn get_binding(expr: &Expr) -> Result<Rc<String>> {
     }
 }
 
-fn eval_special(list: &Vec<Expr>, env: &EnvRef) -> Result<Expr>{
+fn eval_special(list: &[Expr], env: &EnvRef) -> Result<Expr>{
     let s = match list[0] {
         Expr::Special(s) => s,
         _ => unreachable!()
@@ -198,7 +198,7 @@ fn eval_special(list: &Vec<Expr>, env: &EnvRef) -> Result<Expr>{
             }
         },
         SpecialForm::LetStar => {
-            let (bindings, body): (&Vec<Expr>, &Expr) = if list.len() == 3 {
+            let (bindings, body): (&[Expr], &Expr) = if list.len() == 3 {
                 (match list[1] {
                     Expr::List(ref l) | Expr::Vector(ref l) => l,
                     _ => return Err("First argument to let* must be list of bindings".into())
