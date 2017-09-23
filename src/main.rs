@@ -288,6 +288,8 @@ fn run() -> Result<()> {
                              Expr::PrimFunc(val.clone()));
     }
 
+    rep("(def! not (fn* [a] (if a false true)))", &env)?;
+
     let stdin = io::stdin();
     for line in PromptIterator::new(stdin.lock().lines()) {
         let line: String  = line?;
