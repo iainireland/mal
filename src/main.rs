@@ -28,6 +28,7 @@ mod errors {
 use core::*;
 use env::*;
 use errors::*;
+use printer::ReadableExpr;
 
 #[derive(Clone,Debug,PartialEq)]
 pub enum Expr{
@@ -244,7 +245,8 @@ fn eval_special(list: &[Expr], env: &EnvRef) -> Result<Expr>{
 }
 
 fn print(val: &Expr) -> String {
-    String::from(val.to_string())
+    let readable: ReadableExpr = val.into();
+    String::from(readable.to_string())
 }
 
 fn main() {
