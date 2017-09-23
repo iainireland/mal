@@ -244,9 +244,13 @@ fn eval_special(list: &[Expr], env: &EnvRef) -> Result<Expr>{
     }
 }
 
-fn print(val: &Expr) -> String {
-    let readable: ReadableExpr = val.into();
-    String::from(readable.to_string())
+fn pr_str(val: &Expr, print_readably: bool) -> String {
+    if print_readably {
+        let readable: ReadableExpr = val.into();
+        String::from(readable.to_string())
+    } else {
+        String::from(val.to_string())
+    }
 }
 
 fn main() {
@@ -287,7 +291,7 @@ fn run() -> Result<()> {
                 continue;
             }
         };
-        let output = print(&val);
+        let output = pr_str(&val, true);
         println!("{}", output);
         prompt();
     }

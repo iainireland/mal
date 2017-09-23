@@ -5,6 +5,7 @@ use itertools::Itertools;
 
 use Expr;
 use errors::*;
+use pr_str;
 
 lazy_static! {
     pub static ref GLOBAL_NAMESPACE: HashMap<&'static str, PrimFn> = {
@@ -18,7 +19,10 @@ lazy_static! {
  		result.insert(">", PrimFn{func: prim_gt});
  		result.insert("<=", PrimFn{func: prim_le});
  		result.insert(">=", PrimFn{func: prim_ge});
+ 		result.insert("pr-str", PrimFn{func: prim_pr_str});
+ 		result.insert("str", PrimFn{func: prim_str});
  		result.insert("prn", PrimFn{func: prim_prn});
+ 		result.insert("println", PrimFn{func: prim_println});
  		result.insert("list", PrimFn{func: prim_list});
  		result.insert("list?", PrimFn{func: prim_listp});
  		result.insert("empty?", PrimFn{func: prim_emptyp});
@@ -94,10 +98,22 @@ prim_compare!(prim_gt, |a,b| a>b);
 prim_compare!(prim_le, |a,b| a<=b);
 prim_compare!(prim_ge, |a,b| a>=b);
 
-fn prim_prn(operands: &[Expr]) -> Result<Expr> {
-    println!("{}", operands.iter().join(" "));
-    Ok(Expr::Nil)
+macro_rules! prim_print {
+    ($name:ident, $readably:expr, $show:expr, $join:expr) =>
+        (fn $name(operands: &[Expr]) -> Result<Expr> {
+            let result = operands.iter().map(|e| pr_str(e, $readably)).join($join);
+            if $show {
+                println!("{}", result);
+                Ok(Expr::Nil)
+            } else {
+                Ok(Expr::String(result))
+            }
+        });
 }
+prim_print!(prim_pr_str, true, false, " ");
+prim_print!(prim_str, false, false, "");
+prim_print!(prim_prn, true, true, " ");
+prim_print!(prim_println, false, true, " ");
 
 fn prim_list(operands: &[Expr]) -> Result<Expr> {
     Ok(Expr::List(operands.to_vec()))
