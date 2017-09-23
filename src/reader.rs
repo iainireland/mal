@@ -76,7 +76,7 @@ named!(get_keyword<Expr>,
 named!(get_list<Expr>,
        delimited!(
            tag!("("),
-           map!(many0!(get_expr), |exprs| Expr::List(exprs)),
+           map!(many0!(get_expr), Expr::List),
            tag!(")")
        )
 );
@@ -84,7 +84,7 @@ named!(get_list<Expr>,
 named!(get_vector<Expr>,
        delimited!(
            tag!("["),
-           map!(many0!(get_expr), |exprs| Expr::Vector(exprs)),
+           map!(many0!(get_expr), Expr::Vector),
            tag!("]")
        )
 );
@@ -109,16 +109,16 @@ fn get_string(input: &[u8]) -> IResult<&[u8], Expr> {
 		IResult::Error(e) => return IResult::Error(e)
     };
     let mut result = String::new();
-    while let Some(idx) = i.iter().position(|c| *c == '"' as u8 || *c == '\\' as u8) {
+    while let Some(idx) = i.iter().position(|c| *c == b'"' || *c == b'\\') {
         let chunk = String::from_utf8_lossy(&i[0..idx]);
         result.push_str(&chunk);
-        if i[idx] == '"' as u8 {
+        if i[idx] == b'"' {
             return IResult::Done(&i[idx+1..], Expr::String(result));
         } else {
             match i.get(idx+1).map(|&c| c as char) {
-                Some('n') => result.push_str(&"\n"),
-                Some('"') => result.push_str(&"\""),
-                Some('\\') => result.push_str(&"\\"),
+                Some('n') => result.push_str("\n"),
+                Some('"') => result.push_str("\""),
+                Some('\\') => result.push_str("\\"),
 				_ => return IResult::Error(::nom::ErrorKind::Escaped)
             }
             i = &i[idx+2..];

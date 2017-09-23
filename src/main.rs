@@ -64,16 +64,16 @@ pub struct Closure {
 
 impl Closure {
     fn new(params: &Expr, body: &Expr, env: &EnvRef) -> Result<Self> {
-        let bind_list: &[Expr] = match params {
-            &Expr::List(ref l) | &Expr::Vector(ref l) => l,
+        let bind_list: &[Expr] = match *params {
+            Expr::List(ref l) | Expr::Vector(ref l) => l,
             _ => return Err("Function parameters must be list or vector".into())
         };
         let mut is_variadic = false;
         let bind_strs = bind_list.iter().enumerate()
-            .filter_map(|(idx, expr)| match expr {
-                &Expr::Symbol(ref s) => {
+            .filter_map(|(idx, expr)| match *expr {
+                Expr::Symbol(ref s) => {
                     if **s != "&" {
-                        Some(Ok(s.clone()))
+                        Some(Ok(Rc::clone(s)))
                     } else if idx == bind_list.len() - 2 {
                         is_variadic = true;
                         None
@@ -87,7 +87,7 @@ impl Closure {
         Ok(Closure {
             params: bind_strs,
             body: body.clone(),
-            env: env.clone(),
+            env: Rc::clone(env),
             is_variadic: is_variadic,
         })
     }
@@ -113,21 +113,21 @@ fn read(input: &str) -> Result<Expr> {
 }
 
 fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
-    match expr {
-        &Expr::Symbol(ref s) => {
+    match *expr {
+        Expr::Symbol(ref s) => {
             match env.borrow().get(s.deref()) {
                 Some(f) => Ok(f.clone()),
                 None => Err("Unknown symbol".into())
             }
         },
-        &Expr::List(ref l) if l.len() > 0 => {
+        Expr::List(ref l) if !l.is_empty() => {
             if let Expr::Special(_) = l[0] {
                 eval_special(l, env)
             } else {
                 apply(l, env)
             }
         },
-        &Expr::Vector(ref v) => {
+        Expr::Vector(ref v) => {
             let evaluated = v.iter()
                 .map(|expr| eval(expr, env))
                 .collect::<Result<Vec<Expr>>>()?;
@@ -170,7 +170,7 @@ fn apply(list: &[Expr], env: &EnvRef) -> Result<Expr> {
 
 fn get_binding(expr: &Expr) -> Result<Rc<String>> {
     match *expr {
-        Expr::Symbol(ref s) => Ok(s.clone()),
+        Expr::Symbol(ref s) => Ok(Rc::clone(s)),
         _ => Err("Cannot bind to non-symbol".into())
     }
 }
@@ -231,7 +231,7 @@ fn eval_special(list: &[Expr], env: &EnvRef) -> Result<Expr>{
                 return Err("Invalid bindings in let*".into());
             }
 			let new_env = Env::extend(env, vec![]);
-			if bindings.len() > 0 {
+			if !bindings.is_empty() {
                 for binding in bindings.chunks(2) {
                     let (key, expr) = (&binding[0], &binding[1]);
                     let val = eval(expr, &new_env)?;

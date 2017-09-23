@@ -27,7 +27,7 @@ impl Env {
     pub fn extend(env: &EnvRef, bindings: Vec<(Rc<String>, Expr)>) -> EnvRef {
         let e = Env {
             defs: HashMap::from_iter(bindings),
-            outer: Some(env.clone())
+            outer: Some(Rc::clone(env))
         };
         Rc::new(RefCell::new(e))
     }
