@@ -104,11 +104,6 @@ impl PartialEq for Closure {
     }
 }
 
-fn prompt() {
-    print!("user> ");
-    io::stdout().flush().unwrap();
-}
-
 fn read(input: &str) -> Result<Expr> {
     reader::read_str(input)
 }
@@ -137,8 +132,6 @@ fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
         _ => Ok(expr.clone())
     }
 }
-
-
 
 fn apply(list: &[Expr], env: &EnvRef) -> Result<Expr> {
     let op = eval(&list[0], env)?;
@@ -264,6 +257,30 @@ fn main() {
     }
 }
 
+fn rep(line: &str, env: &EnvRef) -> Result<String> {
+    let expr = read(&line)?;
+    let val = eval(&expr, &env)?;
+    let output = pr_str(&val, true);
+    Ok(output)
+}
+
+struct PromptIterator<T> { inner: T }
+impl<T> PromptIterator<T> {
+    fn new(inner: T) -> Self {
+        PromptIterator { inner: inner }
+    }
+}
+impl<T, A> Iterator for PromptIterator<T>  where
+    T: Iterator<Item=A> {
+    type Item = A;
+
+    fn next(&mut self) -> Option<A> {
+        print!("user> ");
+        io::stdout().flush().unwrap();
+        self.inner.next()
+    }
+}
+
 fn run() -> Result<()> {
     let env: EnvRef = Env::new();
     for (key, val) in GLOBAL_NAMESPACE.iter() {
@@ -272,28 +289,19 @@ fn run() -> Result<()> {
     }
 
     let stdin = io::stdin();
-    prompt();
-    for line in stdin.lock().lines() {
-        let line = line?;
-        let expr = match read(&line) {
+    for line in PromptIterator::new(stdin.lock().lines()) {
+        let line: String  = line?;
+        let output = match rep(&line, &env) {
             Ok(e) => e,
             Err(e) => {
                 println!("Error: {}", e);
-                prompt();
+                for e in e.iter().skip(1) {
+                    println!("caused by: {}", e);
+                }
                 continue;
             }
         };
-        let val = match eval(&expr, &env) {
-            Ok(v) => v,
-            Err(e) => {
-                println!("Error: {}", e);
-                prompt();
-                continue;
-            }
-        };
-        let output = pr_str(&val, true);
         println!("{}", output);
-        prompt();
     }
     println!();
     Ok(())
