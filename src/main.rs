@@ -109,131 +109,131 @@ fn read(input: &str) -> Result<Expr> {
 }
 
 fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
-    match *expr {
-        Expr::Symbol(ref s) => {
-            match env.borrow().get(s.deref()) {
-                Some(f) => Ok(f.clone()),
-                None => Err("Unknown symbol".into())
-            }
-        },
-        Expr::List(ref l) if !l.is_empty() => {
-            if let Expr::Special(_) = l[0] {
-                eval_special(l, env)
-            } else {
-                apply(l, env)
-            }
-        },
-        Expr::Vector(ref v) => {
-            let evaluated = v.iter()
-                .map(|expr| eval(expr, env))
-                .collect::<Result<Vec<Expr>>>()?;
-            Ok(Expr::Vector(evaluated))
-        }
-        _ => Ok(expr.clone())
-    }
-}
-
-fn apply(list: &[Expr], env: &EnvRef) -> Result<Expr> {
-    let op = eval(&list[0], env)?;
-    let mut operands = list.iter()
-        .skip(1)
-        .map(|expr| eval(expr, env))
-        .collect::<Result<Vec<Expr>>>()?;
-    match op {
-        Expr::PrimFunc(pf) => {
-            (pf.func)(&operands)
-        },
-        Expr::Func(ref closure) => {
-            if closure.is_variadic {
-                if operands.len() < closure.params.len() - 1 {
-                    return Err("Too few arguments for variadic function".into());
+    let mut result: Option<Expr> = None;
+    let mut curr_env: EnvRef = Rc::clone(&env);
+    loop {
+        result = Some(match *result.as_ref().unwrap_or(expr) {
+            Expr::Symbol(ref s) => {
+                return match curr_env.borrow().get(s.deref()) {
+                    Some(f) => Ok(f.clone()),
+                    None => Err("Unknown symbol".into())
+                };
+            },
+            Expr::List(ref list) if !list.is_empty() => {
+                if let Expr::Special(s) = list[0] {
+                    match s {
+	                    SpecialForm::Def => {
+                            let (key, val) = if list.len() == 3 {
+                                (get_binding(&list[1])?, eval(&list[2], &curr_env)?)
+                            } else {
+                                return Err("Wrong number of arguments in definition".into());
+                            };
+                            curr_env.borrow_mut().set(key, val.clone());
+                            return Ok(val)
+                        },
+                        SpecialForm::Do => {
+                            // Evaluate all but the last element:
+                            list[0..list.len()-1].iter()
+                                .skip(1)
+                                .map(|expr| eval(expr, &curr_env))
+                                .collect::<Result<Vec<Expr>>>()?;
+                            // Tail recursion on the last element.
+                            list.last().map_or(Expr::Nil, |e| e.clone())
+                        },
+                        SpecialForm::Fn => {
+                            if list.len() != 3 {
+                                return Err("Wrong number of arguments for fn*".into());
+                            }
+                            Expr::Func(Rc::new(Closure::new(&list[1], &list[2], &curr_env)?))
+                        },
+                        SpecialForm::If => {
+                            if list.len() != 3 && list.len() != 4 {
+                                return Err("Wrong number of arguments for if".into());
+                            }
+                            let test = eval(&list[1], &curr_env)?;
+                            match test {
+                                Expr::Nil | Expr::False =>
+                                    if list.len() == 4 {
+                                        list[3].clone()
+                                    } else {
+                                        Expr::Nil
+                                    },
+                                _ =>
+                                    list[2].clone()
+                            }
+                        },
+                        SpecialForm::LetStar => {
+                            let (bindings, body): (&[Expr], &Expr) = if list.len() == 3 {
+                                (match list[1] {
+                                    Expr::List(ref l) | Expr::Vector(ref l) => l,
+                                    _ => return Err("First argument to let* must be list of bindings".into())
+                                }, &list[2])
+                            } else {
+                                return Err("Wrong number of arguments for let*".into());
+                            };
+                            if bindings.len() % 2 != 0 {
+                                return Err("Invalid bindings in let*".into());
+                            }
+			                curr_env = Env::extend(&curr_env, vec![]);
+			                if !bindings.is_empty() {
+                                for binding in bindings.chunks(2) {
+                                    let (key, expr) = (&binding[0], &binding[1]);
+                                    let val = eval(expr, &curr_env)?;
+                                    curr_env.borrow_mut().set(get_binding(key)?, val.clone());
+                                }
+                            }
+                            body.clone()
+                        },
+                    }
+                } else {
+                    let op = eval(&list[0], &curr_env)?;
+                    let mut operands = list.iter()
+                        .skip(1)
+                        .map(|expr| eval(expr, &curr_env))
+                        .collect::<Result<Vec<Expr>>>()?;
+                    match op {
+                        Expr::PrimFunc(pf) => {
+                            return (pf.func)(&operands)
+                        },
+                        Expr::Func(ref closure) => {
+                            if closure.is_variadic {
+                                if operands.len() < closure.params.len() - 1 {
+                                    return Err("Too few arguments for variadic function".into());
+                                }
+                                let rest = operands.split_off(closure.params.len() - 1);
+                                operands.push(Expr::List(rest));
+                            } else if operands.len() != closure.params.len() {
+                                return Err("Wrong number of arguments".into());
+                            }
+                            let bindings: Vec<_> = closure.params.iter().cloned()
+                                .zip(operands.iter().cloned()).collect();
+		                    curr_env = Env::extend(&closure.env, bindings);
+                            closure.body.clone()
+                        }
+                        _ => return Err("Non-function cannot be applied".into())
+                    }
                 }
-                let rest = operands.split_off(closure.params.len() - 1);
-                operands.push(Expr::List(rest));
-            } else if operands.len() != closure.params.len() {
-                return Err("Wrong number of arguments".into());
+            },
+            Expr::Vector(ref v) => {
+                let evaluated = v.iter()
+                    .map(|expr| eval(expr, &curr_env))
+                    .collect::<Result<Vec<Expr>>>()?;
+                Expr::Vector(evaluated)
             }
-            let bindings: Vec<_> = closure.params.iter().cloned()
-                .zip(operands.iter().cloned()).collect();
-		    let new_env = Env::extend(&closure.env, bindings);
-            eval(&closure.body, &new_env)
+            _ => return Ok(expr.clone())
+        });
+        match result {
+            Some(Expr::List(_)) | Some(Expr::Symbol(_)) => continue,
+            _ => break
         }
-        _ => Err("Non-function cannot be applied".into())
     }
+    Ok(result.unwrap())
 }
 
 fn get_binding(expr: &Expr) -> Result<Rc<String>> {
     match *expr {
         Expr::Symbol(ref s) => Ok(Rc::clone(s)),
         _ => Err("Cannot bind to non-symbol".into())
-    }
-}
-
-fn eval_special(list: &[Expr], env: &EnvRef) -> Result<Expr>{
-    let s = match list[0] {
-        Expr::Special(s) => s,
-        _ => unreachable!()
-    };
-    match s {
-	    SpecialForm::Def => {
-            let (key, val) = if list.len() == 3 {
-                (get_binding(&list[1])?, eval(&list[2], env)?)
-            } else {
-                return Err("Wrong number of arguments in definition".into());
-            };
-            env.borrow_mut().set(key, val.clone());
-            Ok(val)
-        },
-        SpecialForm::Do => {
-            let mut evaluated = list.iter().skip(1)
-                .map(|expr| eval(expr, env))
-                .collect::<Result<Vec<Expr>>>()?;
-            Ok(evaluated.pop().unwrap_or(Expr::Nil))
-        },
-        SpecialForm::Fn => {
-            if list.len() != 3 {
-                return Err("Wrong number of arguments for fn*".into());
-            }
-            Ok(Expr::Func(Rc::new(Closure::new(&list[1], &list[2], env)?)))
-        },
-        SpecialForm::If => {
-            if list.len() != 3 && list.len() != 4 {
-                return Err("Wrong number of arguments for if".into());
-            }
-            let test = eval(&list[1], env)?;
-            match test {
-                Expr::Nil | Expr::False =>
-                    if list.len() == 4 {
-                        eval(&list[3], env)
-                    } else {
-                        Ok(Expr::Nil)
-                    },
-                _ =>
-                    eval(&list[2], env)
-            }
-        },
-        SpecialForm::LetStar => {
-            let (bindings, body): (&[Expr], &Expr) = if list.len() == 3 {
-                (match list[1] {
-                    Expr::List(ref l) | Expr::Vector(ref l) => l,
-                    _ => return Err("First argument to let* must be list of bindings".into())
-                }, &list[2])
-            } else {
-                return Err("Wrong number of arguments for let*".into());
-            };
-            if bindings.len() % 2 != 0 {
-                return Err("Invalid bindings in let*".into());
-            }
-			let new_env = Env::extend(env, vec![]);
-			if !bindings.is_empty() {
-                for binding in bindings.chunks(2) {
-                    let (key, expr) = (&binding[0], &binding[1]);
-                    let val = eval(expr, &new_env)?;
-                    new_env.borrow_mut().set(get_binding(key)?, val.clone());
-                }
-            }
-            eval(body, &new_env)
-        },
     }
 }
 
