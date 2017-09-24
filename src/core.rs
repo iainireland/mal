@@ -1,5 +1,8 @@
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
 
 use itertools::Itertools;
 
@@ -28,6 +31,7 @@ lazy_static! {
  		result.insert("empty?", PrimFn{func: prim_emptyp});
  		result.insert("count", PrimFn{func: prim_count});
  		result.insert("read-string", PrimFn{func: prim_read_string});
+ 		result.insert("slurp", PrimFn{func: prim_slurp});
         result
     };
 }
@@ -166,6 +170,19 @@ fn prim_read_string(operands: &[Expr]) -> Result<Expr> {
         Err("Wrong arity for read_string".into())
     } else if let Expr::String(ref s) = operands[0] {
         ::reader::read_str(s)
+    } else {
+        Err("Invalid argument for read_string".into())
+    }
+}
+
+fn prim_slurp(operands: &[Expr]) -> Result<Expr> {
+    if operands.len() != 1 {
+        Err("Wrong arity for slurp".into())
+    } else if let Expr::String(ref s) = operands[0] {
+        let mut file = File::open(Path::new(s))?;
+        let mut result = String::new();
+        file.read_to_string(&mut result)?;
+        Ok(Expr::String(result))
     } else {
         Err("Invalid argument for read_string".into())
     }
