@@ -300,6 +300,23 @@ fn run() -> Result<()> {
     rep("(def! not (fn* [a] (if a false true)))", &env)?;
     rep("(def! load-file (fn* (f) (eval (read-string (str \"(do \" (slurp f) \")\")))))", &env)?;
 
+    let mut args = std::env::args();
+    if args.len() > 1 {
+        args.next();
+        let file: String = args.next().unwrap();
+        let arg_exprs: Vec<Expr> = args.map(|s| Expr::String(s)).collect();
+
+        println!("file {}", file);
+
+        env.borrow_mut().set(Rc::new(String::from("*ARGV*")),
+                             Expr::List(arg_exprs));
+        rep(&format!("(load-file \"{}\")", &file), &env)?;
+        return Ok(());
+    } else {
+        env.borrow_mut().set(Rc::new(String::from("*ARGV*")),
+                             Expr::List(vec![]));
+    }
+
     let stdin = io::stdin();
     for line in PromptIterator::new(stdin.lock().lines()) {
         let line: String  = line?;
