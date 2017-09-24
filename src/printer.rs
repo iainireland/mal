@@ -33,6 +33,7 @@ macro_rules! display_expr {
                     write!(f, "{}", match s {
                         SpecialForm::Def => "def!",
                         SpecialForm::Do => "do",
+                        SpecialForm::Eval => "eval",
                         SpecialForm::Fn => "fn*",
                         SpecialForm::If => "if",
                         SpecialForm::LetStar => "let*"

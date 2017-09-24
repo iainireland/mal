@@ -45,4 +45,10 @@ impl Env {
 	    self.defs.insert(k,v)
     }
 
+    pub fn root(env: &EnvRef) -> EnvRef {
+        match env.deref().borrow().outer {
+            None => env.clone(),
+            Some(ref outer) => Env::root(&outer.clone())
+        }
+    }
 }

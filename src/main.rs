@@ -50,6 +50,7 @@ pub enum Expr{
 pub enum SpecialForm {
     Def,
     Do,
+    Eval,
     Fn,
     If,
     LetStar
@@ -116,7 +117,7 @@ fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
             Expr::Symbol(ref s) => {
                 return match curr_env.borrow().get(s.deref()) {
                     Some(f) => Ok(f.clone()),
-                    None => Err("Unknown symbol".into())
+                    None => Err(format!("Unknown symbol: {}", s).into())
                 };
             },
             Expr::List(ref list) if !list.is_empty() => {
@@ -139,6 +140,13 @@ fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
                                 .collect::<Result<Vec<Expr>>>()?;
                             // Tail recursion on the last element.
                             list.last().map_or(Expr::Nil, |e| e.clone())
+                        },
+                        SpecialForm::Eval => {
+                            if list.len() != 2 {
+                                return Err("Wrong number of arguments to eval".into());
+                            }
+                            let ast = eval(&list[1], &curr_env)?;
+                            return eval(&ast, &Env::root(&curr_env));
                         },
                         SpecialForm::Fn => {
                             if list.len() != 3 {
@@ -289,6 +297,7 @@ fn run() -> Result<()> {
     }
 
     rep("(def! not (fn* [a] (if a false true)))", &env)?;
+    rep("(def! load-file (fn* (f) (eval (read-string (str \"(do \" (slurp f) \")\")))))", &env)?;
 
     let stdin = io::stdin();
     for line in PromptIterator::new(stdin.lock().lines()) {
