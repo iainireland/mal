@@ -146,7 +146,8 @@ fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
                                 return Err("Wrong number of arguments to eval".into());
                             }
                             let ast = eval(&list[1], &curr_env)?;
-                            return eval(&ast, &Env::root(&curr_env));
+                            curr_env = Env::root(&curr_env);
+                            ast
                         },
                         SpecialForm::Fn => {
                             if list.len() != 3 {
