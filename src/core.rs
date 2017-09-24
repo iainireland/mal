@@ -27,6 +27,7 @@ lazy_static! {
  		result.insert("list?", PrimFn{func: prim_listp});
  		result.insert("empty?", PrimFn{func: prim_emptyp});
  		result.insert("count", PrimFn{func: prim_count});
+ 		result.insert("read-string", PrimFn{func: prim_read_string});
         result
     };
 }
@@ -157,5 +158,15 @@ fn prim_eq(operands: &[Expr]) -> Result<Expr> {
         Err("Wrong arity for count".into())
     } else {
         Ok(bool_expr(operands[0] == operands[1]))
+    }
+}
+
+fn prim_read_string(operands: &[Expr]) -> Result<Expr> {
+    if operands.len() != 1 {
+        Err("Wrong arity for read_string".into())
+    } else if let Expr::String(ref s) = operands[0] {
+        ::reader::read_str(s)
+    } else {
+        Err("Invalid argument for read_string".into())
     }
 }
