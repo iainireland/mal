@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::fs::File;
 use std::io::Read;
+use std::ops::Deref;
+use std::rc::Rc;
 use std::path::Path;
 
 use itertools::Itertools;
@@ -111,7 +113,7 @@ macro_rules! prim_print {
                 println!("{}", result);
                 Ok(Expr::Nil)
             } else {
-                Ok(Expr::String(result))
+                Ok(Expr::String(Rc::new(result)))
             }
         });
 }
@@ -179,10 +181,10 @@ fn prim_slurp(operands: &[Expr]) -> Result<Expr> {
     if operands.len() != 1 {
         Err("Wrong arity for slurp".into())
     } else if let Expr::String(ref s) = operands[0] {
-        let mut file = File::open(Path::new(s))?;
+        let mut file = File::open(Path::new(s.deref()))?;
         let mut result = String::new();
         file.read_to_string(&mut result)?;
-        Ok(Expr::String(result))
+        Ok(Expr::String(Rc::new(result)))
     } else {
         Err("Invalid argument for read_string".into())
     }

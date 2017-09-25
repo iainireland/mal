@@ -114,7 +114,7 @@ fn get_string(input: &[u8]) -> IResult<&[u8], Expr> {
         let chunk = String::from_utf8_lossy(&i[0..idx]);
         result.push_str(&chunk);
         if i[idx] == b'"' {
-            return IResult::Done(&i[idx+1..], Expr::String(result));
+            return IResult::Done(&i[idx+1..], Expr::String(Rc::new(result)));
         } else {
             match i.get(idx+1).map(|&c| c as char) {
                 Some('n') => result.push_str("\n"),

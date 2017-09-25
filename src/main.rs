@@ -38,7 +38,7 @@ pub enum Expr{
     Symbol(Rc<String>),
     Keyword(Rc<String>),
     Number(i32),
-    String(String),
+    String(Rc<String>),
     List(Vec<Expr>),
     Vector(Vec<Expr>),
     Func(Rc<Closure>),
@@ -304,7 +304,7 @@ fn run() -> Result<()> {
     if args.len() > 1 {
         args.next();
         let file: String = args.next().unwrap();
-        let arg_exprs: Vec<Expr> = args.map(|s| Expr::String(s)).collect();
+        let arg_exprs: Vec<Expr> = args.map(|s| Expr::String(Rc::new(s))).collect();
 
         println!("file {}", file);
 
