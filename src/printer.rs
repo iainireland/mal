@@ -5,9 +5,10 @@ use itertools::Itertools;
 
 use Expr;
 use SpecialForm;
+use MalHashType;
 
 macro_rules! display_expr {
-    ($string_format:expr, $recursive:expr) =>
+    ($string_format:expr, $recurse:expr) =>
         (fn fmt(&self, f: &mut Formatter) -> Result {
             match *self.deref() {
                 Expr::Symbol(ref s) => write!(f, "{}", s),
@@ -21,14 +22,27 @@ macro_rules! display_expr {
                 Expr::PrimFunc(_) => write!(f, "#<primitive function>"),
                 Expr::List(ref l) => {
 		            write!(f, "(")?;
-                    write!(f, "{}", $recursive(l))?;
+                    write!(f, "{}", l.iter().map($recurse).join(" "))?;
 			        write!(f, ")")
                 },
                 Expr::Vector(ref l) => {
 		            write!(f, "[")?;
-                    write!(f, "{}", $recursive(l))?;
+                    write!(f, "{}", l.iter().map($recurse).join(" "))?;
 			        write!(f, "]")
                 },
+                Expr::Hash(ref h) => {
+                    write!(f, "{{")?;
+                    // TODO: rewrite this as iter.map.join
+                    write!(f, "{}", h.iter().map(|(key,value)| {
+                        match key {
+                            &(ref s, MalHashType::String) =>
+                                format!(concat!($string_format, " {}"), s, $recurse(value)),
+                            &(ref s, MalHashType::Keyword) =>
+                                format!(":{} {}", s, $recurse(value))
+                        }
+                    }).join(" "))?;
+                    write!(f, "}}")
+                }
                 Expr::Special(s) => {
                     write!(f, "{}", match s {
                         SpecialForm::Def => "def!",
@@ -45,7 +59,7 @@ macro_rules! display_expr {
 }
 
 impl Display for Expr {
-    display_expr!("{}", |list: &[Expr]| list.iter().join(" "));
+    display_expr!("{}", |expr| expr);
 }
 
 pub struct ReadableExpr<'a> {
@@ -66,5 +80,5 @@ impl<'a> From<&'a Expr> for ReadableExpr<'a> {
 }
 
 impl<'a> Display for ReadableExpr<'a> {
-    display_expr!("{:?}", |list: &[Expr]| list.iter().map(|expr| ReadableExpr { expr: expr }).join(" "));
+    display_expr!("{:?}", |expr| ReadableExpr { expr: expr });
 }

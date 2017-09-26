@@ -6,6 +6,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate nom;
 
+use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::io;
 use std::io::BufRead;
@@ -41,6 +42,7 @@ pub enum Expr{
     String(Rc<String>),
     List(Vec<Expr>),
     Vector(Vec<Expr>),
+    Hash(MalHash),
     Func(Rc<Closure>),
     PrimFunc(PrimFn),
     Special(SpecialForm)
@@ -103,6 +105,13 @@ impl PartialEq for Closure {
     fn eq(&self, _: &Closure) -> bool {
         false
     }
+}
+
+pub type MalHash = HashMap<(Rc<String>, MalHashType),Expr>;
+#[derive(Clone,Debug,Eq,Hash,PartialEq)]
+pub enum MalHashType {
+    String,
+    Keyword
 }
 
 fn read(input: &str) -> Result<Expr> {
@@ -228,7 +237,14 @@ fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
                     .map(|expr| eval(expr, &curr_env))
                     .collect::<Result<Vec<Expr>>>()?;
                 Expr::Vector(evaluated)
-            }
+            },
+            Expr::Hash(ref h) => {
+                let mut evaluated = h.clone();
+                for expr in evaluated.values_mut() {
+                    *expr = eval(expr, &curr_env)?;
+                }
+                Expr::Hash(evaluated)
+            },
             _ => return Ok(expr.clone())
         });
         match result {

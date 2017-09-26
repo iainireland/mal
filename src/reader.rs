@@ -5,6 +5,7 @@ use errors::*;
 use nom::*;
 
 use Expr;
+use MalHashType;
 use SpecialForm;
 
 pub fn read_str(input: &str) -> Result<Expr> {
@@ -89,6 +90,28 @@ named!(get_vector<Expr>,
        )
 );
 
+named!(get_hash<Expr>,
+       delimited!(
+           tag!("{"),
+           map!(
+               many0!(tuple!(ws!(alt!(get_string | get_keyword)),
+                                 get_expr)),
+               |pairs| {
+                   Expr::Hash(pairs.iter()
+                              .map(|&(ref key, ref val)|
+                                   (match key {
+                                       &Expr::String(ref s)  => (Rc::clone(s), MalHashType::String),
+                                       &Expr::Keyword(ref s)  => (Rc::clone(s), MalHashType::Keyword),
+                                       _ => panic!("Only strings or keywords should have been accepted.")
+                                   },
+                                    val.clone()
+                                   )
+                              ).collect())
+               }),
+           tag!("}")
+       )
+);
+
 named!(get_special<Expr>,
        alt!(
            map!(tag!("nil"), |_| Expr::Nil) |
@@ -132,6 +155,7 @@ named!(get_expr<Expr>,
        ws!(
            alt!(get_list |
                 get_vector |
+                get_hash |
                 get_number |
                 get_special |
                 get_string |
