@@ -6,6 +6,10 @@ extern crate lazy_static;
 #[macro_use]
 extern crate nom;
 
+// TODO: comments in reader.rs
+// TODO: reader macro @ in reader.rs
+// TODO: atoms
+
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::io;

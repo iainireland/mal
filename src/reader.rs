@@ -152,14 +152,20 @@ fn get_string(input: &[u8]) -> IResult<&[u8], Expr> {
 }
 
 named!(get_expr<Expr>,
-       ws!(
-           alt!(get_list |
-                get_vector |
-                get_hash |
-                get_number |
-                get_special |
-                get_string |
-                get_keyword |
-                get_symbol)
+       do_parse!(
+           expr: ws!(
+               alt!(get_list |
+                    get_vector |
+                    get_hash |
+                    get_number |
+                    get_special |
+                    get_string |
+                    get_keyword |
+                    get_symbol)
+           ) >>
+           // read comment
+           many0!(preceded!(tag!(";"),
+                          take_until_and_consume!("\n"))) >>
+           (expr)
        )
 );
