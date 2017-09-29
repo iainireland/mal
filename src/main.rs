@@ -1,12 +1,8 @@
-#[macro_use]
-extern crate error_chain;
+#[macro_use] extern crate error_chain;
 extern crate itertools;
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
-extern crate nom;
+#[macro_use] extern crate lazy_static;
+extern crate regex;
 
-// TODO: comments in reader.rs
 // TODO: reader macro @ in reader.rs
 // TODO: atoms
 
@@ -318,7 +314,7 @@ fn run() -> Result<()> {
     }
 
     rep("(def! not (fn* [a] (if a false true)))", &env)?;
-    rep("(def! load-file (fn* (f) (eval (read-string (str \"(do \" (slurp f) \")\")))))", &env)?;
+    // rep("(def! load-file (fn* (f) (eval (read-string (str \"(do \" (slurp f) \")\")))))", &env)?;
 
     let mut args = std::env::args();
     if args.len() > 1 {

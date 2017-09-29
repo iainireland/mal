@@ -1,171 +1,125 @@
-use std;
+use std::iter::Peekable;
 use std::rc::Rc;
 
+use regex::Regex;
+
 use errors::*;
-use nom::*;
+
 
 use Expr;
 use MalHashType;
 use SpecialForm;
 
-pub fn read_str(input: &str) -> Result<Expr> {
-	match get_expr(input.as_bytes()) {
-        IResult::Done(bytes, expr) => {
-	        if bytes.is_empty() {
-                Ok(expr)
-            } else {
-                bail!("incomplete expression");
-            }
-        },
-        IResult::Incomplete(needed) => {
-            println!("Needed: {:?}", needed);
-            bail!("failed parsing");
-        },
-        IResult::Error(e) => {
-            println!("Error: {:?}", e);
-            bail!("failed parsing");
-        },
-    }
+struct TokenIterator<'a> {
+    data: &'a str,
+    index: usize,
+    regex: Regex,
 }
 
-named!(numeric_string<&str>,
-       map_res!(
-           digit,
-           std::str::from_utf8
-       )
-);
-
-named!(get_number<Expr>,
-       map!(
-           tuple!(
-               opt!(tag!("-")),
-               map_res!(
-     	           numeric_string,
-                   std::str::FromStr::from_str
-               )
-           ),
-           |(sign,n)| match sign {
-               None => Expr::Number(n),
-               Some(_) => Expr::Number(-n)
-           }
-       )
-);
-
-named!(get_symbol<Expr>,
-       map!(
-           map_res!(
-               is_not_s!(" \t[]{}()'\"`,;"),
-               std::str::from_utf8
-           ),
-           |s| Expr::Symbol(Rc::new(String::from(s)))
-       )
-);
-
-named!(get_keyword<Expr>,
-       preceded!(
-           tag!(":"),
-           map!(
-               map_res!(
-                   is_not_s!(" \t[]{}()'\"`,;"),
-                   std::str::from_utf8
-               ),
-               |s| Expr::Keyword(Rc::new(String::from(s)))
-           )
-       )
-);
-
-named!(get_list<Expr>,
-       delimited!(
-           tag!("("),
-           map!(many0!(get_expr), Expr::List),
-           tag!(")")
-       )
-);
-
-named!(get_vector<Expr>,
-       delimited!(
-           tag!("["),
-           map!(many0!(get_expr), Expr::Vector),
-           tag!("]")
-       )
-);
-
-named!(get_hash<Expr>,
-       delimited!(
-           tag!("{"),
-           map!(
-               many0!(tuple!(ws!(alt!(get_string | get_keyword)),
-                                 get_expr)),
-               |pairs| {
-                   Expr::Hash(pairs.iter()
-                              .map(|&(ref key, ref val)|
-                                   (match key {
-                                       &Expr::String(ref s)  => (Rc::clone(s), MalHashType::String),
-                                       &Expr::Keyword(ref s)  => (Rc::clone(s), MalHashType::Keyword),
-                                       _ => panic!("Only strings or keywords should have been accepted.")
-                                   },
-                                    val.clone()
-                                   )
-                              ).collect())
-               }),
-           tag!("}")
-       )
-);
-
-named!(get_special<Expr>,
-       alt!(
-           map!(tag!("nil"), |_| Expr::Nil) |
-           map!(tag!("true"), |_| Expr::True) |
-           map!(tag!("false"), |_| Expr::False) |
-           map!(tag!("def!"), |_| Expr::Special(SpecialForm::Def)) |
-           map!(tag!("do"), |_| Expr::Special(SpecialForm::Do)) |
-           map!(tag!("eval"), |_| Expr::Special(SpecialForm::Eval)) |
-           map!(tag!("fn*"), |_| Expr::Special(SpecialForm::Fn)) |
-           map!(tag!("if"), |_| Expr::Special(SpecialForm::If)) |
-           map!(tag!("let*"), |_| Expr::Special(SpecialForm::LetStar))
-       )
-);
-
-fn get_string(input: &[u8]) -> IResult<&[u8], Expr> {
-    let mut i = match tag!(input, "\"") {
-        IResult::Done(rest, _) => rest,
-        IResult::Incomplete(n) => return IResult::Incomplete(n),
-		IResult::Error(e) => return IResult::Error(e)
-    };
-    let mut result = String::new();
-    while let Some(idx) = i.iter().position(|c| *c == b'"' || *c == b'\\') {
-        let chunk = String::from_utf8_lossy(&i[0..idx]);
-        result.push_str(&chunk);
-        if i[idx] == b'"' {
-            return IResult::Done(&i[idx+1..], Expr::String(Rc::new(result)));
-        } else {
-            match i.get(idx+1).map(|&c| c as char) {
-                Some('n') => result.push_str("\n"),
-                Some('"') => result.push_str("\""),
-                Some('\\') => result.push_str("\\"),
-				_ => return IResult::Error(::nom::ErrorKind::Escaped)
-            }
-            i = &i[idx+2..];
+impl<'a> TokenIterator<'a> {
+    fn new(input: &'a str) -> Self {
+        let token_re = Regex::new(r#"(?x)
+            ^
+            [\s,]*                # whitespace (includes commas)
+            (                     # start capture group
+            ~@                 |  # splice-unquote
+            [\[\]{}()'`~^@]    |  # special chars
+            "(?:\\.|[^\\"])*"  |  # string literal
+            ;.*                |  # comment
+            [^\s\[\]{}()'\~^@]+   # symbol        
+            )"#).unwrap();
+        TokenIterator {
+            data: input,
+            index: 0,
+            regex: token_re
         }
     }
-    IResult::Incomplete(Needed::Unknown)
 }
 
-named!(get_expr<Expr>,
-       do_parse!(
-           expr: ws!(
-               alt!(get_list |
-                    get_vector |
-                    get_hash |
-                    get_number |
-                    get_special |
-                    get_string |
-                    get_keyword |
-                    get_symbol)
-           ) >>
-           // read comment
-           many0!(preceded!(tag!(";"),
-                          take_until_and_consume!("\n"))) >>
-           (expr)
-       )
-);
+impl<'a> Iterator for TokenIterator<'a> {
+    type Item = &'a str;
+    fn next(&mut self) -> Option<Self::Item> {
+        let re = self.regex.captures(&self.data[self.index..]);
+        re.and_then(|capture| capture.get(1))
+            .map(|m| {
+                self.index += m.end();
+                m.as_str()
+            })
+            // Filter out comments
+            .and_then(|tok| if tok.starts_with(';') {
+                self.next()
+            } else {
+                Some(tok)
+            })
+    }
+}
+
+struct Tokenizer<'a> {
+    tokens: Peekable<TokenIterator<'a>>
+}
+
+impl<'a> Tokenizer<'a> {
+    fn new(input: &'a str) -> Self {
+        Tokenizer {
+            tokens: TokenIterator::new(input).peekable()
+        }
+    }
+    fn read_form(&mut self) -> Result<Expr> {
+        let peeked = *self.tokens.peek()
+            .ok_or("Unexpected end of expression")?;
+        if peeked == "(" || peeked == "[" || peeked == "{" {
+            self.read_list()
+        } else {
+            self.read_atom()
+        }
+    }
+    fn read_list(&mut self) -> Result<Expr> {
+        let delim = self.tokens.next().unwrap(); // already peeked
+        let close_delim = match delim {
+            "(" => ")",
+            "[" => "]",
+            "{" => "}",
+            _ => panic!("Bad delimiter")
+        };
+        let mut contents = vec![];
+        while *self.tokens.peek().ok_or("Unterminated list")? != close_delim {
+            let expr = self.read_form()?;
+            contents.push(expr);
+        }
+        self.tokens.next();
+        match delim {
+            "(" => Ok(Expr::List(contents)),
+            "[" => Ok(Expr::Vector(contents)),
+            "{" => unimplemented!(),
+            _ => panic!("Bad delimiter")
+        }
+    }
+    fn read_atom(&mut self) -> Result<Expr> {
+        let tok = self.tokens.next().ok_or("Error parsing expression")?;
+        if let Ok(n) = tok.parse::<i32>() {
+            Ok(Expr::Number(n))
+        } else if tok.starts_with(':') {
+            Ok(Expr::Keyword(Rc::new(String::from(&tok[1..]))))
+        } else if tok.starts_with('"') {
+            unimplemented!();
+        } else { 
+            match tok {
+                "nil" => Ok(Expr::Nil),
+                "true" => Ok(Expr::True),
+                "false" => Ok(Expr::False),
+                "def!" => Ok (Expr::Special(SpecialForm::Def)),
+                "do" => Ok (Expr::Special(SpecialForm::Do)),
+                "eval" => Ok (Expr::Special(SpecialForm::Eval)),
+                "fn*" => Ok (Expr::Special(SpecialForm::Fn)),
+                "if" => Ok (Expr::Special(SpecialForm::If)),
+                "let*" => Ok (Expr::Special(SpecialForm::LetStar)),
+                _ => Ok(Expr::Symbol(Rc::new(String::from(tok))))
+            }
+        }
+    }
+}
+
+pub fn read_str(input: &str) -> Result<Expr> {
+    let mut tokenizer = Tokenizer::new(input);
+    tokenizer.read_form()
+}
