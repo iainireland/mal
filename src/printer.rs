@@ -32,7 +32,6 @@ macro_rules! display_expr {
                 },
                 Expr::Hash(ref h) => {
                     write!(f, "{{")?;
-                    // TODO: rewrite this as iter.map.join
                     write!(f, "{}", h.iter().map(|(key,value)| {
                         match key {
                             &(ref s, MalHashType::String) =>

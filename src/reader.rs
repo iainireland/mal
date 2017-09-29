@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::iter::Peekable;
 use std::rc::Rc;
 
@@ -90,7 +91,22 @@ impl<'a> Tokenizer<'a> {
         match delim {
             "(" => Ok(Expr::List(contents)),
             "[" => Ok(Expr::Vector(contents)),
-            "{" => unimplemented!(),
+            "{" => {
+                if contents.len() % 2 != 0 {
+                    return Err("Invalid hash table".into());
+                }
+                let mut hash_map = HashMap::new();
+                for chunk in contents.chunks(2) {
+                    let (key_expr, val_expr) = (&chunk[0],&chunk[1]);
+                    let key = match *key_expr {
+                        Expr::String(ref s)  => (Rc::clone(s), MalHashType::String),
+                        Expr::Keyword(ref s)  => (Rc::clone(s), MalHashType::Keyword),
+                        _ => return Err("Invalid key in hashmap".into())
+                    };
+                    hash_map.insert(key, val_expr.clone());
+                }
+                Ok(Expr::Hash(hash_map))
+            }
             _ => panic!("Bad delimiter")
         }
     }
@@ -101,7 +117,22 @@ impl<'a> Tokenizer<'a> {
         } else if tok.starts_with(':') {
             Ok(Expr::Keyword(Rc::new(String::from(&tok[1..]))))
         } else if tok.starts_with('"') {
-            unimplemented!();
+            let mut remaining = &tok[1..tok.len()-1];
+            let mut result = String::with_capacity(remaining.len());
+            while let Some(idx) = remaining.chars().position(|c| c == '\\') {
+                let (chunk, leftovers) = remaining.split_at(idx);
+                result.push_str(chunk);
+                match leftovers.chars().nth(1) {
+                    Some('n') => result.push_str("\n"),
+                    Some('"') => result.push_str("\""),
+                    Some('\'') => result.push_str("\'"),
+                    Some('\\') => result.push_str("\\"),
+                    _ => return Err("Bad escape sequence".into())
+                }
+                remaining = &leftovers[2..];
+            }
+            result.push_str(remaining);
+            Ok(Expr::String(Rc::new(result)))
         } else { 
             match tok {
                 "nil" => Ok(Expr::Nil),

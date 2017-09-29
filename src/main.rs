@@ -314,7 +314,7 @@ fn run() -> Result<()> {
     }
 
     rep("(def! not (fn* [a] (if a false true)))", &env)?;
-    // rep("(def! load-file (fn* (f) (eval (read-string (str \"(do \" (slurp f) \")\")))))", &env)?;
+    rep("(def! load-file (fn* (f) (eval (read-string (str \"(do \" (slurp f) \")\")))))", &env)?;
 
     let mut args = std::env::args();
     if args.len() > 1 {
