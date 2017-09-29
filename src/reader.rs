@@ -21,13 +21,13 @@ impl<'a> TokenIterator<'a> {
     fn new(input: &'a str) -> Self {
         let token_re = Regex::new(r#"(?x)
             ^
-            [\s,]*                # whitespace (includes commas)
-            (                     # start capture group
-            ~@                 |  # splice-unquote
-            [\[\]{}()'`~^@]    |  # special chars
-            "(?:\\.|[^\\"])*"  |  # string literal
-            ;.*                |  # comment
-            [^\s\[\]{}()'\~^@]+   # symbol        
+            [\s,]*                 # whitespace (includes commas)
+            (                      # start capture group
+            ~@                   | # splice-unquote
+            [\[\]{}()'`~^@]      | # special chars
+            "(?:\\.|[^\\"])*"    | # string literal
+            ;.*                  | # comment
+            [^\s\[\]{}()'\~^@;,]+  # symbol        
             )"#).unwrap();
         TokenIterator {
             data: input,
@@ -83,7 +83,7 @@ impl<'a> Tokenizer<'a> {
             _ => panic!("Bad delimiter")
         };
         let mut contents = vec![];
-        while *self.tokens.peek().ok_or("Unterminated list")? != close_delim {
+        while *self.tokens.peek().ok_or("Mismatched parentheses")? != close_delim {
             let expr = self.read_form()?;
             contents.push(expr);
         }
@@ -144,6 +144,11 @@ impl<'a> Tokenizer<'a> {
                 "fn*" => Ok (Expr::Special(SpecialForm::Fn)),
                 "if" => Ok (Expr::Special(SpecialForm::If)),
                 "let*" => Ok (Expr::Special(SpecialForm::LetStar)),
+                "@" => {
+                    let atom = self.read_form()?;
+                    Ok(Expr::List(vec![Expr::Symbol(Rc::new(String::from("deref"))), atom]))
+                },
+                ")" | "]" | "}" => Err("Mismatched parentheses".into()),
                 _ => Ok(Expr::Symbol(Rc::new(String::from(tok))))
             }
         }

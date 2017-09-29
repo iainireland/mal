@@ -12,14 +12,15 @@ macro_rules! display_expr {
         (fn fmt(&self, f: &mut Formatter) -> Result {
             match *self.deref() {
                 Expr::Symbol(ref s) => write!(f, "{}", s),
-		        Expr::Number(n) => write!(f, "{}", n),
-		        Expr::String(ref s) => write!(f, $string_format, s),
-		        Expr::Keyword(ref s) => write!(f, ":{}", s),
-		        Expr::Nil => write!(f, "nil"),
-		        Expr::True => write!(f, "true"),
-		        Expr::False => write!(f, "false"),
+		          Expr::Number(n) => write!(f, "{}", n),
+		          Expr::String(ref s) => write!(f, $string_format, s),
+		          Expr::Keyword(ref s) => write!(f, ":{}", s),
+		          Expr::Nil => write!(f, "nil"),
+		          Expr::True => write!(f, "true"),
+		          Expr::False => write!(f, "false"),
                 Expr::Func(_) => write!(f, "#<function>"),
                 Expr::PrimFunc(_) => write!(f, "#<primitive function>"),
+                Expr::Atom(ref a) => write!(f, "(atom {})", $recurse(&*a.borrow())),
                 Expr::List(ref l) => {
 		            write!(f, "(")?;
                     write!(f, "{}", l.iter().map($recurse).join(" "))?;

@@ -6,6 +6,7 @@ extern crate regex;
 // TODO: reader macro @ in reader.rs
 // TODO: atoms
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::io;
@@ -43,6 +44,7 @@ pub enum Expr{
     List(Vec<Expr>),
     Vector(Vec<Expr>),
     Hash(MalHash),
+    Atom(Rc<RefCell<Expr>>),
     Func(Rc<Closure>),
     PrimFunc(PrimFn),
     Special(SpecialForm)
@@ -211,7 +213,7 @@ fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
                         .collect::<Result<Vec<Expr>>>()?;
                     match op {
                         Expr::PrimFunc(pf) => {
-                            return (pf.func)(&operands)
+                            return (pf.func)(&operands, &curr_env)
                         },
                         Expr::Func(ref closure) => {
                             if closure.is_variadic {

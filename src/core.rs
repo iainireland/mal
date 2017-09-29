@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::fs::File;
@@ -8,38 +9,45 @@ use std::path::Path;
 
 use itertools::Itertools;
 
+use eval;
 use Expr;
+use env::EnvRef;
 use errors::*;
 use pr_str;
 
 lazy_static! {
     pub static ref GLOBAL_NAMESPACE: HashMap<&'static str, PrimFn> = {
-	    let mut result = HashMap::new();
- 		result.insert("+", PrimFn{func: prim_add});
- 		result.insert("-", PrimFn{func: prim_sub});
- 		result.insert("*", PrimFn{func: prim_mul});
- 		result.insert("/", PrimFn{func: prim_div});
- 		result.insert("=", PrimFn{func: prim_eq});
- 		result.insert("<", PrimFn{func: prim_lt});
- 		result.insert(">", PrimFn{func: prim_gt});
- 		result.insert("<=", PrimFn{func: prim_le});
- 		result.insert(">=", PrimFn{func: prim_ge});
- 		result.insert("pr-str", PrimFn{func: prim_pr_str});
- 		result.insert("str", PrimFn{func: prim_str});
- 		result.insert("prn", PrimFn{func: prim_prn});
- 		result.insert("println", PrimFn{func: prim_println});
- 		result.insert("list", PrimFn{func: prim_list});
- 		result.insert("list?", PrimFn{func: prim_listp});
- 		result.insert("empty?", PrimFn{func: prim_emptyp});
- 		result.insert("count", PrimFn{func: prim_count});
- 		result.insert("read-string", PrimFn{func: prim_read_string});
- 		result.insert("slurp", PrimFn{func: prim_slurp});
+	     let mut result = HashMap::new();
+ 		  result.insert("+", PrimFn{func: prim_add});
+ 		  result.insert("-", PrimFn{func: prim_sub});
+ 		  result.insert("*", PrimFn{func: prim_mul});
+ 		  result.insert("/", PrimFn{func: prim_div});
+ 		  result.insert("=", PrimFn{func: prim_eq});
+ 		  result.insert("<", PrimFn{func: prim_lt});
+ 		  result.insert(">", PrimFn{func: prim_gt});
+ 		  result.insert("<=", PrimFn{func: prim_le});
+ 		  result.insert(">=", PrimFn{func: prim_ge});
+ 		  result.insert("pr-str", PrimFn{func: prim_pr_str});
+ 		  result.insert("str", PrimFn{func: prim_str});
+ 		  result.insert("prn", PrimFn{func: prim_prn});
+ 		  result.insert("println", PrimFn{func: prim_println});
+ 		  result.insert("list", PrimFn{func: prim_list});
+ 		  result.insert("list?", PrimFn{func: prim_listp});
+ 		  result.insert("empty?", PrimFn{func: prim_emptyp});
+ 		  result.insert("count", PrimFn{func: prim_count});
+ 		  result.insert("read-string", PrimFn{func: prim_read_string});
+ 		  result.insert("slurp", PrimFn{func: prim_slurp});
+ 		  result.insert("atom", PrimFn{func: prim_atom});
+ 		  result.insert("atom?", PrimFn{func: prim_atomp});
+ 		  result.insert("deref", PrimFn{func: prim_deref});
+ 		  result.insert("reset!", PrimFn{func: prim_reset});
+ 		  result.insert("swap!", PrimFn{func: prim_swap});
         result
     };
 }
 
 pub struct PrimFn {
-    pub func: fn(&[Expr]) -> Result<Expr>
+    pub func: fn(&[Expr], &EnvRef) -> Result<Expr>
 }
 impl Clone for PrimFn {
     fn clone(&self) -> Self {
@@ -72,7 +80,7 @@ fn expr_num(expr: &Expr) -> Result<i32> {
 
 macro_rules! prim_arith {
     ($name:ident, $op:expr) =>
-        (fn $name(operands: &[Expr]) -> Result<Expr> {
+        (fn $name(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
             if operands.len() < 2 {
                 return Err("Not enough operands".into());
             }
@@ -91,7 +99,7 @@ prim_arith!(prim_div, |a,b| a/b);
 
 macro_rules! prim_compare {
     ($name:ident, $op:expr) =>
-        (fn $name(operands: &[Expr]) -> Result<Expr> {
+        (fn $name(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
             if operands.len() != 2 {
                 return Err("Wrong number of operands for comparison".into());
             }
@@ -107,7 +115,7 @@ prim_compare!(prim_ge, |a,b| a>=b);
 
 macro_rules! prim_print {
     ($name:ident, $readably:expr, $show:expr, $join:expr) =>
-        (fn $name(operands: &[Expr]) -> Result<Expr> {
+        (fn $name(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
             let result = operands.iter().map(|e| pr_str(e, $readably)).join($join);
             if $show {
                 println!("{}", result);
@@ -122,11 +130,11 @@ prim_print!(prim_str, false, false, "");
 prim_print!(prim_prn, true, true, " ");
 prim_print!(prim_println, false, true, " ");
 
-fn prim_list(operands: &[Expr]) -> Result<Expr> {
+fn prim_list(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
     Ok(Expr::List(operands.to_vec()))
 }
 
-fn prim_listp(operands: &[Expr]) -> Result<Expr> {
+fn prim_listp(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
     if operands.len() != 1 {
         return Err("Wrong arity for list?".into());
     }
@@ -136,7 +144,7 @@ fn prim_listp(operands: &[Expr]) -> Result<Expr> {
     }
 }
 
-fn prim_emptyp(operands: &[Expr]) -> Result<Expr> {
+fn prim_emptyp(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
     if operands.len() != 1 {
         return Err("Wrong arity for empty?".into());
     }
@@ -147,7 +155,7 @@ fn prim_emptyp(operands: &[Expr]) -> Result<Expr> {
     }
 }
 
-fn prim_count(operands: &[Expr]) -> Result<Expr> {
+fn prim_count(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
     if operands.len() != 1 {
         return Err("Wrong arity for count".into());
     }
@@ -159,7 +167,7 @@ fn prim_count(operands: &[Expr]) -> Result<Expr> {
     }
 }
 
-fn prim_eq(operands: &[Expr]) -> Result<Expr> {
+fn prim_eq(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
     if operands.len() != 2 {
         Err("Wrong arity for count".into())
     } else {
@@ -167,7 +175,7 @@ fn prim_eq(operands: &[Expr]) -> Result<Expr> {
     }
 }
 
-fn prim_read_string(operands: &[Expr]) -> Result<Expr> {
+fn prim_read_string(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
     if operands.len() != 1 {
         Err("Wrong arity for read_string".into())
     } else if let Expr::String(ref s) = operands[0] {
@@ -177,7 +185,7 @@ fn prim_read_string(operands: &[Expr]) -> Result<Expr> {
     }
 }
 
-fn prim_slurp(operands: &[Expr]) -> Result<Expr> {
+fn prim_slurp(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
     if operands.len() != 1 {
         Err("Wrong arity for slurp".into())
     } else if let Expr::String(ref s) = operands[0] {
@@ -187,5 +195,69 @@ fn prim_slurp(operands: &[Expr]) -> Result<Expr> {
         Ok(Expr::String(Rc::new(result)))
     } else {
         Err("Invalid argument for read_string".into())
+    }
+}
+
+fn prim_atom(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
+    if operands.len() != 1 {
+        Err("Wrong arity for atom".into())
+    } else {
+        Ok(Expr::Atom(Rc::new(RefCell::new(operands[0].clone()))))
+    }
+}
+
+fn prim_atomp(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
+    if operands.len() != 1 {
+        Err("Wrong arity for atom?".into())
+    } else {
+        match operands[0] {
+            Expr::Atom(_) => Ok(Expr::True),
+            _ => Ok(Expr::False)
+        }
+    }
+}
+
+fn prim_deref(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
+    if operands.len() != 1 {
+        Err("Wrong arity for deref".into())
+    } else {
+        match operands[0] {
+            Expr::Atom(ref a) => {
+                Ok(a.borrow().clone())
+            },
+            _ => Err("Invalid argument for deref".into())
+        }
+    }
+}
+
+fn prim_reset(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
+    if operands.len() != 2 {
+        Err("Wrong arity for reset!".into())
+    } else {
+        match operands[0] {
+            Expr::Atom(ref a) => {
+                *a.borrow_mut() = operands[1].clone();
+                Ok(operands[1].clone())
+            },
+            _ => Err("Invalid argument for reset!".into())
+        }
+    }
+}
+
+fn prim_swap(operands: &[Expr], env: &EnvRef) -> Result<Expr> {
+    if operands.len() < 2 {
+        return Err("Not enough arguments for swap!".into())
+    }
+    match operands[0] {
+        Expr::Atom(ref a) => {
+            let old_val = a.borrow().clone();
+            let mut expr = vec![operands[1].clone()];
+            expr.push(old_val);
+            expr.extend(operands[2..].iter().cloned());
+            let new_val = eval(&Expr::List(expr), env)?;
+            *a.borrow_mut() = new_val.clone();
+            Ok(new_val)
+        },
+        _ => Err("First argument to swap must be atom".into())
     }
 }
