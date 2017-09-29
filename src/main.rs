@@ -50,6 +50,12 @@ pub enum Expr{
     Special(SpecialForm)
 }
 
+impl Expr {
+    fn symbol(s: &str) -> Self {
+        Expr::Symbol(Rc::new(String::from(s)))
+    }
+}
+
 #[derive(Clone,Copy,Debug,PartialEq)]
 pub enum SpecialForm {
     Def,
@@ -57,7 +63,9 @@ pub enum SpecialForm {
     Eval,
     Fn,
     If,
-    LetStar
+    LetStar,
+    Quote,
+    Quasiquote
 }
 
 #[derive(Clone)]
@@ -149,8 +157,7 @@ fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
                                 .skip(1)
                                 .map(|expr| eval(expr, &curr_env))
                                 .collect::<Result<Vec<Expr>>>()?;
-                            // Tail recursion on the last element.
-                            list.last().map_or(Expr::Nil, |e| e.clone())
+                            list[1..].last().map_or(Expr::Nil, |e| e.clone()) // tco
                         },
                         SpecialForm::Eval => {
                             if list.len() != 2 {
@@ -158,13 +165,13 @@ fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
                             }
                             let ast = eval(&list[1], &curr_env)?;
                             curr_env = Env::root(&curr_env);
-                            ast
+                            ast // tco
                         },
                         SpecialForm::Fn => {
                             if list.len() != 3 {
                                 return Err("Wrong number of arguments for fn*".into());
                             }
-                            Expr::Func(Rc::new(Closure::new(&list[1], &list[2], &curr_env)?))
+                            Expr::Func(Rc::new(Closure::new(&list[1], &list[2], &curr_env)?)) // tco
                         },
                         SpecialForm::If => {
                             if list.len() != 3 && list.len() != 4 {
@@ -174,12 +181,12 @@ fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
                             match test {
                                 Expr::Nil | Expr::False =>
                                     if list.len() == 4 {
-                                        list[3].clone()
+                                        list[3].clone() // tco
                                     } else {
                                         Expr::Nil
                                     },
                                 _ =>
-                                    list[2].clone()
+                                    list[2].clone() // tco
                             }
                         },
                         SpecialForm::LetStar => {
@@ -202,8 +209,20 @@ fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
                                     curr_env.borrow_mut().set(get_binding(key)?, val.clone());
                                 }
                             }
-                            body.clone()
+                            body.clone() // tco
                         },
+                        SpecialForm::Quote => {
+                            if list.len() != 2 {
+                                return Err("Invalid quote".into());
+                            } 
+                            return Ok(list[1].clone());
+                        },
+                        SpecialForm::Quasiquote => {
+                            if list.len() != 2 {
+                                return Err("Invalid quasiquote".into());
+                            } 
+                            quasiquote(&list[1])? // tco
+                        }
                     }
                 } else {
                     let op = eval(&list[0], &curr_env)?;
@@ -227,8 +246,8 @@ fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
                             }
                             let bindings: Vec<_> = closure.params.iter().cloned()
                                 .zip(operands.iter().cloned()).collect();
-		                    curr_env = Env::extend(&closure.env, bindings);
-                            closure.body.clone()
+		                      curr_env = Env::extend(&closure.env, bindings);
+                            closure.body.clone() // tco
                         }
                         _ => return Err("Non-function cannot be applied".into())
                     }
@@ -262,6 +281,42 @@ fn get_binding(expr: &Expr) -> Result<Rc<String>> {
         Expr::Symbol(ref s) => Ok(Rc::clone(s)),
         _ => Err("Cannot bind to non-symbol".into())
     }
+}
+
+fn quasiquote(ast: &Expr) -> Result<Expr> {
+    let list = match *ast {
+        Expr::List(ref l) | Expr::Vector(ref l) if !l.is_empty() => l,
+        _ => return Ok(Expr::List(vec![Expr::Special(SpecialForm::Quote), ast.clone()]))
+    };
+    let (head,tail) = list.split_first().unwrap(); // already checked for empty
+    match *head {
+        Expr::Symbol(ref s) if s.deref() == "unquote" => {
+            if tail.len() == 1 {
+                return Ok(tail[0].clone());
+            } else {
+                return Err("Invalid unquote".into());
+            }
+        },
+        Expr::List(ref l) | Expr::Vector(ref l) if !l.is_empty() => {
+            match l[0] {
+                Expr::Symbol(ref s) if s.deref() == "splice-unquote" => {
+                    if l.len() == 2 {
+                        let spliced = vec![Expr::symbol("concat"),
+                                           l[1].clone(),
+                                           quasiquote(&Expr::List(tail.to_vec()))?];
+                        return Ok(Expr::List(spliced))
+                    } else {
+                        return Err("Invalid splice-unquote".into());
+                    }
+                },
+                _ => {}
+            }
+        }
+        _ => {}
+    };
+    Ok(Expr::List(vec![Expr::symbol("cons"),
+                       quasiquote(head)?,
+                       quasiquote(&Expr::List(tail.to_vec()))?]))
 }
 
 fn pr_str(val: &Expr, print_readably: bool) -> String {

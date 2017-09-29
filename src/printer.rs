@@ -50,7 +50,9 @@ macro_rules! display_expr {
                         SpecialForm::Eval => "eval",
                         SpecialForm::Fn => "fn*",
                         SpecialForm::If => "if",
-                        SpecialForm::LetStar => "let*"
+                        SpecialForm::LetStar => "let*",
+                        SpecialForm::Quote => "quote",
+                        SpecialForm::Quasiquote => "quasiquote"
                     })
                 }
             }

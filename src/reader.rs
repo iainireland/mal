@@ -144,12 +144,17 @@ impl<'a> Tokenizer<'a> {
                 "fn*" => Ok (Expr::Special(SpecialForm::Fn)),
                 "if" => Ok (Expr::Special(SpecialForm::If)),
                 "let*" => Ok (Expr::Special(SpecialForm::LetStar)),
-                "@" => {
-                    let atom = self.read_form()?;
-                    Ok(Expr::List(vec![Expr::Symbol(Rc::new(String::from("deref"))), atom]))
-                },
+                "quote" => Ok (Expr::Special(SpecialForm::Quote)),
+                "quasiquote" => Ok (Expr::Special(SpecialForm::Quasiquote)),
+                "@" => Ok(Expr::List(vec![Expr::symbol("deref"), self.read_form()?])),
+                "'" => Ok(Expr::List(vec![Expr::Special(SpecialForm::Quote), 
+                                          self.read_form()?])),
+                "`" => Ok(Expr::List(vec![Expr::Special(SpecialForm::Quasiquote), 
+                                          self.read_form()?])),
+                "~" => Ok(Expr::List(vec![Expr::symbol("unquote"), self.read_form()?])),
+                "~@" => Ok(Expr::List(vec![Expr::symbol("splice-unquote"), self.read_form()?])),
                 ")" | "]" | "}" => Err("Mismatched parentheses".into()),
-                _ => Ok(Expr::Symbol(Rc::new(String::from(tok))))
+                _ => Ok(Expr::symbol(tok))
             }
         }
     }

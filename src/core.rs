@@ -42,6 +42,8 @@ lazy_static! {
  		  result.insert("deref", PrimFn{func: prim_deref});
  		  result.insert("reset!", PrimFn{func: prim_reset});
  		  result.insert("swap!", PrimFn{func: prim_swap});
+ 		  result.insert("cons", PrimFn{func: prim_cons});
+ 		  result.insert("concat", PrimFn{func: prim_concat});
         result
     };
 }
@@ -260,4 +262,29 @@ fn prim_swap(operands: &[Expr], env: &EnvRef) -> Result<Expr> {
         },
         _ => Err("First argument to swap must be atom".into())
     }
+}
+
+fn prim_cons(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
+    if operands.len() != 2 {
+        return Err("Wrong arity for cons".into());
+    }
+    match operands[1] {
+        Expr::List(ref l) | Expr::Vector(ref l) => {
+            let mut new_list = vec![operands[0].clone()];
+            new_list.extend(l.iter().cloned());
+            Ok(Expr::List(new_list))
+        },
+        _ => Err("Second argument to cons must be list or vector".into())
+    }
+}
+
+fn prim_concat(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
+    let mut new_list = vec![];
+    for operand in operands {
+        new_list.extend(match *operand {
+            Expr::List(ref l) | Expr::Vector(ref l) => l.iter().cloned(),
+            _ => return Err("Second argument to concat must be list or vector".into())
+        })
+    }
+    Ok(Expr::List(new_list))
 }
