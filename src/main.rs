@@ -3,8 +3,7 @@ extern crate itertools;
 #[macro_use] extern crate lazy_static;
 extern crate regex;
 
-// TODO: reader macro @ in reader.rs
-// TODO: atoms
+// TODO: Wrap expr::list/vector/hash in Rc
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -59,11 +58,13 @@ impl Expr {
 #[derive(Clone,Copy,Debug,PartialEq)]
 pub enum SpecialForm {
     Def,
+    DefMacro,
     Do,
     Eval,
     Fn,
     If,
     LetStar,
+    MacroExpand,
     Quote,
     Quasiquote
 }
@@ -73,7 +74,8 @@ pub struct Closure {
     params: Vec<Rc<String>>,
     body: Expr,
     env: EnvRef,
-    is_variadic: bool
+    is_variadic: bool,
+    is_macro: bool
 }
 
 impl Closure {
@@ -103,7 +105,13 @@ impl Closure {
             body: body.clone(),
             env: Rc::clone(env),
             is_variadic: is_variadic,
+            is_macro: false
         })
+    }
+    fn as_macro(&self) -> Self {
+        let mut ret = self.clone();
+        ret.is_macro = true;
+        ret
     }
 }
 impl Debug for Closure {
@@ -132,7 +140,9 @@ fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
     let mut result: Option<Expr> = None;
     let mut curr_env: EnvRef = Rc::clone(&env);
     loop {
-        result = Some(match *result.as_ref().unwrap_or(expr) {
+        let unexpanded = result.unwrap_or(expr.clone());
+        let expanded = macro_expand(unexpanded, &curr_env)?;
+        result = Some(match expanded {
             Expr::Symbol(ref s) => {
                 return match curr_env.borrow().get(s.deref()) {
                     Some(f) => Ok(f.clone()),
@@ -142,12 +152,19 @@ fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
             Expr::List(ref list) if !list.is_empty() => {
                 if let Expr::Special(s) = list[0] {
                     match s {
-	                    SpecialForm::Def => {
-                            let (key, val) = if list.len() == 3 {
+	                     SpecialForm::Def | SpecialForm::DefMacro => {
+                            let (key, mut val) = if list.len() == 3 {
                                 (get_binding(&list[1])?, eval(&list[2], &curr_env)?)
                             } else {
                                 return Err("Wrong number of arguments in definition".into());
                             };
+                            if s == SpecialForm::DefMacro {
+                                val = match val {
+                                    Expr::Func(ref mut closure) => 
+                                        Expr::Func(Rc::new(closure.as_macro())),
+                                    _ => return Err("defmacro! must define a function".into())
+                                };
+                            }
                             curr_env.borrow_mut().set(key, val.clone());
                             return Ok(val)
                         },
@@ -222,11 +239,18 @@ fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
                                 return Err("Invalid quasiquote".into());
                             } 
                             quasiquote(&list[1])? // tco
+                        },
+                        SpecialForm::MacroExpand => {
+                            if list.len() == 2 {
+                                return macro_expand(list[1].clone(), env)
+                            } else {
+                                return Err("Wrong arity for macroexpand".into())
+                            }
                         }
                     }
                 } else {
                     let op = eval(&list[0], &curr_env)?;
-                    let mut operands = list.iter()
+                    let operands = list.iter()
                         .skip(1)
                         .map(|expr| eval(expr, &curr_env))
                         .collect::<Result<Vec<Expr>>>()?;
@@ -235,19 +259,9 @@ fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
                             return (pf.func)(&operands, &curr_env)
                         },
                         Expr::Func(ref closure) => {
-                            if closure.is_variadic {
-                                if operands.len() < closure.params.len() - 1 {
-                                    return Err("Too few arguments for variadic function".into());
-                                }
-                                let rest = operands.split_off(closure.params.len() - 1);
-                                operands.push(Expr::List(rest));
-                            } else if operands.len() != closure.params.len() {
-                                return Err("Wrong number of arguments".into());
-                            }
-                            let bindings: Vec<_> = closure.params.iter().cloned()
-                                .zip(operands.iter().cloned()).collect();
-		                      curr_env = Env::extend(&closure.env, bindings);
-                            closure.body.clone() // tco
+                            let (body, body_env) = apply_closure(closure, operands)?;
+ 		                      curr_env = body_env;
+                            body // tco
                         }
                         _ => return Err("Non-function cannot be applied".into())
                     }
@@ -266,7 +280,7 @@ fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
                 }
                 Expr::Hash(evaluated)
             },
-            _ => return Ok(expr.clone())
+            _ => return Ok(expanded.clone())
         });
         match result {
             Some(Expr::List(_)) | Some(Expr::Symbol(_)) => continue,
@@ -281,6 +295,21 @@ fn get_binding(expr: &Expr) -> Result<Rc<String>> {
         Expr::Symbol(ref s) => Ok(Rc::clone(s)),
         _ => Err("Cannot bind to non-symbol".into())
     }
+}
+
+fn apply_closure(closure: &Closure, mut operands: Vec<Expr>) -> Result<(Expr, EnvRef)> {
+    if closure.is_variadic {
+        if operands.len() < closure.params.len() - 1 {
+            return Err("Too few arguments for variadic function".into());
+        }
+        let rest = operands.split_off(closure.params.len() - 1);
+        operands.push(Expr::List(rest));
+    } else if operands.len() != closure.params.len() {
+        return Err("Wrong number of arguments for closure".into());
+    }
+    let bindings: Vec<_> = closure.params.iter().cloned()
+        .zip(operands.iter().cloned()).collect();
+    Ok((closure.body.clone(), Env::extend(&closure.env, bindings)))
 }
 
 fn quasiquote(ast: &Expr) -> Result<Expr> {
@@ -317,6 +346,34 @@ fn quasiquote(ast: &Expr) -> Result<Expr> {
     Ok(Expr::List(vec![Expr::symbol("cons"),
                        quasiquote(head)?,
                        quasiquote(&Expr::List(tail.to_vec()))?]))
+}
+
+fn get_called_macro(expr: &Expr, env: &EnvRef) -> Option<(Rc<Closure>, Vec<Expr>)> {
+    if let Expr::List(ref l) = *expr {
+        if l.is_empty() { 
+            return None
+        }
+        let (head,tail) = l.split_first().unwrap();
+        if let &Expr::Symbol(ref s) = head {
+            if let Some(Expr::Func(ref c)) = env.borrow().get(s) {
+                if c.is_macro {
+                    return Some((Rc::clone(c), tail.to_vec()));
+                }
+            }
+        }
+    }
+    None
+}
+
+fn macro_expand(expr: Expr, env: &EnvRef) -> Result<Expr> {
+    let mut ast = expr;
+    let mut curr_env = env.clone();
+    while let Some((closure, operands)) = get_called_macro(&ast, &curr_env) {
+        let (new_ast, new_env) = apply_closure(&closure, operands)?;
+        curr_env = new_env;
+        ast = eval(&new_ast, &curr_env)?;
+    }
+    Ok(ast.clone())
 }
 
 fn pr_str(val: &Expr, print_readably: bool) -> String {
@@ -379,8 +436,6 @@ fn run() -> Result<()> {
         let file: String = args.next().unwrap();
         let arg_exprs: Vec<Expr> = args.map(|s| Expr::String(Rc::new(s))).collect();
 
-        println!("file {}", file);
-
         env.borrow_mut().set(Rc::new(String::from("*ARGV*")),
                              Expr::List(arg_exprs));
         rep(&format!("(load-file \"{}\")", &file), &env)?;
@@ -408,3 +463,5 @@ fn run() -> Result<()> {
     println!();
     Ok(())
 }
+
+

@@ -46,11 +46,13 @@ macro_rules! display_expr {
                 Expr::Special(s) => {
                     write!(f, "{}", match s {
                         SpecialForm::Def => "def!",
+                        SpecialForm::DefMacro => "defmacro!",
                         SpecialForm::Do => "do",
                         SpecialForm::Eval => "eval",
                         SpecialForm::Fn => "fn*",
                         SpecialForm::If => "if",
                         SpecialForm::LetStar => "let*",
+                        SpecialForm::MacroExpand => "macroexpand",
                         SpecialForm::Quote => "quote",
                         SpecialForm::Quasiquote => "quasiquote"
                     })

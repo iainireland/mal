@@ -44,6 +44,9 @@ lazy_static! {
  		  result.insert("swap!", PrimFn{func: prim_swap});
  		  result.insert("cons", PrimFn{func: prim_cons});
  		  result.insert("concat", PrimFn{func: prim_concat});
+ 		  result.insert("nth", PrimFn{func: prim_nth});
+ 		  result.insert("first", PrimFn{func: prim_first});
+ 		  result.insert("rest", PrimFn{func: prim_rest});
         result
     };
 }
@@ -287,4 +290,53 @@ fn prim_concat(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
         })
     }
     Ok(Expr::List(new_list))
+}
+
+fn prim_nth(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
+    if operands.len() != 2 {
+        return Err("Wrong arity for nth".into());
+    }
+    let index = match operands[1] {
+        Expr::Number(n) => n,
+        _ => return Err("Second argument to nth must be number".into())
+    };
+    match operands[0] {
+        Expr::List(ref l) | Expr::Vector(ref l) => {
+            match l.get(index as usize) {
+                Some(expr) => Ok(expr.clone()),
+                None => Err("Index out of bounds".into())
+            }
+        },
+        _ => Err("First argument to nth must be list or vector".into())
+    }
+}
+
+fn prim_first(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
+    if operands.len() != 1 {
+        return Err("Wrong arity for first".into());
+    }
+    match operands[0] {
+        Expr::List(ref l) | Expr::Vector(ref l) => {
+            Ok(l.first().unwrap_or(&Expr::Nil).clone())
+        },
+        Expr::Nil => Ok(Expr::Nil),
+        _ => Err("First argument to first must be list or vector".into())
+    }
+}
+
+fn prim_rest(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
+    if operands.len() != 1 {
+        return Err("Wrong arity for rest".into());
+    }
+    match operands[0] {
+        Expr::List(ref l) | Expr::Vector(ref l) => {
+            let mut result = vec![];
+            if l.len() > 1 {
+                result.extend(l[1..].iter().cloned());
+            } 
+            Ok(Expr::List(result))
+        },
+        Expr::Nil => Ok(Expr::Nil),
+        _ => Err("First argument to rest must be list or vector".into())
+    }
 }
