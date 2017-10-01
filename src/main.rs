@@ -1,4 +1,3 @@
-#[macro_use] extern crate error_chain;
 extern crate itertools;
 #[macro_use] extern crate lazy_static;
 extern crate regex;
@@ -19,9 +18,35 @@ mod env;
 mod reader;
 mod printer;
 mod errors {
-    error_chain! {
-        foreign_links {
-            Io(::std::io::Error) #[cfg(unix)];
+    pub type Result<T> = ::std::result::Result<T, Error>;
+
+    pub enum Error {
+        Io(::std::io::Error),
+        Msg(&'static str),
+        FormatMsg(String),
+    }
+    impl From<::std::io::Error> for Error {
+        fn from(io: ::std::io::Error) -> Self {
+            Error::Io(io)
+        }
+    }
+    impl From<&'static str> for Error {
+        fn from(s: &'static str) -> Self {
+            Error::Msg(s)
+        }
+    }
+    impl From<String> for Error {
+        fn from(s: String) -> Self {
+            Error::FormatMsg(s)
+        }
+    }
+    impl ::std::fmt::Display for Error {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+            match *self {
+                Error::Io(ref e) => write!(f, "IO error: {}", e),
+                Error::Msg(ref s) => write!(f, "Error: {}", s),
+                Error::FormatMsg(ref s) => write!(f, "Error: {}", s),
+            }
         }
     }
 }
@@ -388,10 +413,6 @@ fn pr_str(val: &Expr, print_readably: bool) -> String {
 fn main() {
     if let Err(ref e) = run() {
         println!("Error: {}", e);
-
-        for e in e.iter().skip(1) {
-            println!("caused by: {}", e);
-        }
         ::std::process::exit(1);
     }
 }
@@ -452,9 +473,6 @@ fn run() -> Result<()> {
             Ok(e) => e,
             Err(e) => {
                 println!("Error: {}", e);
-                for e in e.iter().skip(1) {
-                    println!("caused by: {}", e);
-                }
                 continue;
             }
         };
