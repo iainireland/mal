@@ -18,12 +18,13 @@ mod env;
 mod reader;
 mod printer;
 mod errors {
+    use std::rc::Rc;
+    use Expr;
     pub type Result<T> = ::std::result::Result<T, Error>;
 
     pub enum Error {
         Io(::std::io::Error),
-        Msg(&'static str),
-        FormatMsg(String),
+        Catchable(Expr)
     }
     impl From<::std::io::Error> for Error {
         fn from(io: ::std::io::Error) -> Self {
@@ -32,20 +33,24 @@ mod errors {
     }
     impl From<&'static str> for Error {
         fn from(s: &'static str) -> Self {
-            Error::Msg(s)
+            Error::Catchable(Expr::String(Rc::new(String::from(s))))
         }
     }
     impl From<String> for Error {
         fn from(s: String) -> Self {
-            Error::FormatMsg(s)
+            Error::Catchable(Expr::String(Rc::new(s)))
+        }
+    }
+    impl From<Expr> for Error {
+        fn from(e: Expr) -> Self {
+            Error::Catchable(e)
         }
     }
     impl ::std::fmt::Display for Error {
         fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
             match *self {
                 Error::Io(ref e) => write!(f, "IO error: {}", e),
-                Error::Msg(ref s) => write!(f, "Error: {}", s),
-                Error::FormatMsg(ref s) => write!(f, "Error: {}", s),
+                Error::Catchable(ref e) => write!(f, "Error: {}", e)
             }
         }
     }
@@ -82,16 +87,18 @@ impl Expr {
 
 #[derive(Clone,Copy,Debug,PartialEq)]
 pub enum SpecialForm {
+    Catch,
     Def,
     DefMacro,
     Do,
     Eval,
     Fn,
     If,
-    LetStar,
+    Let,
     MacroExpand,
     Quote,
-    Quasiquote
+    Quasiquote,
+    Try
 }
 
 #[derive(Clone)]
@@ -231,7 +238,7 @@ fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
                                     list[2].clone() // tco
                             }
                         },
-                        SpecialForm::LetStar => {
+                        SpecialForm::Let => {
                             let (bindings, body): (&[Expr], &Expr) = if list.len() == 3 {
                                 (match list[1] {
                                     Expr::List(ref l) | Expr::Vector(ref l) => l,
@@ -271,6 +278,37 @@ fn eval(expr: &Expr, env: &EnvRef) -> Result<Expr> {
                             } else {
                                 return Err("Wrong arity for macroexpand".into())
                             }
+                        },
+                        SpecialForm::Try => {
+                            if list.len() != 3 {
+                                return Err("Invalid try*".into());
+                            }
+                            let (catch_symbol, catch_body) = match list[2] {
+                                Expr::List(ref l) if l.len() == 3 => {
+                                    match (&l[0], &l[1]) {
+                                        (&Expr::Special(SpecialForm::Catch),
+                                         &Expr::Symbol(ref s)) => {
+                                            (Rc::clone(s), &l[2])
+                                        },
+                                        _ => return Err("Invalid catch".into())
+                                    }
+                                },
+                                _ => return Err("Invalid catch".into())
+                            };
+                            let tried = eval(&list[1], &curr_env);
+                            let result = match tried {
+                                Ok(expr) => expr,
+                                Err(Error::Catchable(e)) => {
+                                    curr_env = Env::extend(&curr_env, 
+                                                           vec!((catch_symbol, e)));
+                                    catch_body.clone()
+                                }
+                                _ => return tried
+                            };
+                            result
+                        },
+                        SpecialForm::Catch => {
+                            return Err("Catch without try".into())
                         }
                     }
                 } else {

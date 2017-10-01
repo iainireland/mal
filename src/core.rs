@@ -47,6 +47,7 @@ lazy_static! {
  		  result.insert("nth", PrimFn{func: prim_nth});
  		  result.insert("first", PrimFn{func: prim_first});
  		  result.insert("rest", PrimFn{func: prim_rest});
+ 		  result.insert("throw", PrimFn{func: prim_throw});
         result
     };
 }
@@ -338,5 +339,13 @@ fn prim_rest(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
         },
         Expr::Nil => Ok(Expr::Nil),
         _ => Err("First argument to rest must be list or vector".into())
+    }
+}
+
+fn prim_throw(operands: &[Expr], _: &EnvRef) -> Result<Expr> {
+    if operands.len() != 1 {
+        return Err("Wrong arity for throw".into());
+    } else {
+        return Err(operands[0].clone().into());
     }
 }
